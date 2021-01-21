@@ -6,6 +6,8 @@ pub mod macondo {
 use prost::Message;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("{:?}", board::klv::EMPTY_KLV_BYTES);
+
     let nc = nats::connect("localhost")?;
     let subject = "macondo.bot";
     let sub = nc.subscribe(subject)?;
