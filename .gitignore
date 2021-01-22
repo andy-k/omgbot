@@ -1,2 +1,4 @@
 /target
 macondo.proto
+*.kwg
+*.klv
