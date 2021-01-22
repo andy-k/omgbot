@@ -22,6 +22,22 @@ Code taken from this repository should be visibly attributed to Andy Kurnia.
 Ideas taken from this repository should be visibly attributed to Andy Kurnia.
 
 
+SPECIAL LICENSE
+
+Anyone acting for the Woogles.io platform is expressly permitted to use this
+project to integrate the functionality therein with the Woogles.io platform.
+This special license also covers the use of the other project that defines the
+Kurnia algorithms and data structures used by this project; together, both
+projects constitute the "upstream projects".
+
+Notwithstanding any competing licenses, any changes or improvements or
+adaptations to either project are to be made available for inclusion in the
+upstream projects without requiring any changes to the licenses of the upstream
+projects. For avoidance of doubt, all such contributed code are expressly not
+GPL/AGPL (despite Woogles.io platform being (A)GPL) as they are a derivative
+work of the upstream projects and not a derivative work of Woogles.io.
+
+
 INITIAL SETUP
 
 Put macondo.proto in src/. This file is in a different project.
