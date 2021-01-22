@@ -52,7 +52,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game_config = &game_config::make_common_english_game_config();
     let mut game_state = game_state::GameState::new(game_config);
     let mut move_generator = movegen::KurniaMoveGenerator::new(game_config);
-    let mut move_filter = move_filter::GenMoves::Unfiltered;
+    let mut csw19_tilt_move_filter = move_filter::GenMoves::Tilt(move_filter::Tilt::new(
+        &game_config,
+        &csw19_kwg,
+        move_filter::Tilt::length_importances(),
+        1,
+    ));
+    let mut nwl18_tilt_move_filter = move_filter::GenMoves::Tilt(move_filter::Tilt::new(
+        &game_config,
+        &nwl18_kwg,
+        move_filter::Tilt::length_importances(),
+        1,
+    ));
+    let mut nwl20_tilt_move_filter = move_filter::GenMoves::Tilt(move_filter::Tilt::new(
+        &game_config,
+        &nwl20_kwg,
+        move_filter::Tilt::length_importances(),
+        1,
+    ));
+    let mut ecwl_tilt_move_filter = move_filter::GenMoves::Tilt(move_filter::Tilt::new(
+        &game_config,
+        &ecwl_kwg,
+        move_filter::Tilt::length_importances(),
+        1,
+    ));
     let mut move_picker = move_picker::MovePicker::Hasty;
     let mut rng = rand_chacha::ChaCha20Rng::from_entropy();
     let mut available_tally_buf = Vec::new();
@@ -167,15 +190,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 board::return_error!("only supports two-player games".into());
             }
-            let (kwg, klv, game_config, mut game_state) = match game_history.lexicon.as_ref() {
-                "CSW19" => (&csw19_kwg, &klv, &game_config, &mut game_state),
-                "NWL18" => (&nwl18_kwg, &klv, &game_config, &mut game_state),
-                "NWL20" => (&nwl20_kwg, &klv, &game_config, &mut game_state),
-                "ECWL" => (&ecwl_kwg, &klv, &game_config, &mut game_state),
-                _ => {
-                    board::return_error!("not familiar with the lexicon".into());
-                }
-            };
+            let (kwg, mut move_filter, klv, game_config, mut game_state) =
+                match game_history.lexicon.as_ref() {
+                    "CSW19" => (
+                        &csw19_kwg,
+                        &mut csw19_tilt_move_filter,
+                        &klv,
+                        &game_config,
+                        &mut game_state,
+                    ),
+                    "NWL18" => (
+                        &nwl18_kwg,
+                        &mut nwl18_tilt_move_filter,
+                        &klv,
+                        &game_config,
+                        &mut game_state,
+                    ),
+                    "NWL20" => (
+                        &nwl20_kwg,
+                        &mut nwl20_tilt_move_filter,
+                        &klv,
+                        &game_config,
+                        &mut game_state,
+                    ),
+                    "ECWL" => (
+                        &ecwl_kwg,
+                        &mut ecwl_tilt_move_filter,
+                        &klv,
+                        &game_config,
+                        &mut game_state,
+                    ),
+                    _ => {
+                        board::return_error!("not familiar with the lexicon".into());
+                    }
+                };
 
             // rebuild the state
             game_state.reset();
@@ -284,6 +332,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "{}",
                 alphabet.fmt_rack(&game_state.players[game_state.turn as usize].rack)
             );
+
+            if let move_filter::GenMoves::Tilt(tilt) = move_filter {
+                tilt.tilt_by_rng(&mut rng);
+                println!(
+                    "Effective tilt: tilt factor = {}, leave scale = {}",
+                    tilt.tilt_factor, tilt.leave_scale
+                );
+            }
 
             let board_snapshot = &movegen::BoardSnapshot {
                 board_tiles: &game_state.board_tiles,
