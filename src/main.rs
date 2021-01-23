@@ -52,9 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // one per supported config
     let game_config = std::sync::Arc::new(Box::new(game_config::make_common_english_game_config()));
 
-    let nc = async_nats::connect("localhost").await?;
+    let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
     let sub = nc.subscribe("macondo.bot").await?;
     while let Some(msg) = sub.next().await {
+        let nc = std::sync::Arc::clone(&nc);
         let bot_req = macondo::BotRequest::decode(&*msg.data)?;
 
         let csw19_kwg = std::sync::Arc::clone(&csw19_kwg);
@@ -71,6 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut move_generator = movegen::KurniaMoveGenerator::new(&game_config);
             let mut rng = rand_chacha::ChaCha20Rng::from_entropy();
             let mut buf = Vec::new();
+            let mut can_sleep = false;
             {
                 let mut move_picker = move_picker::MovePicker::Hasty;
                 let mut place_tiles_buf = Vec::new();
@@ -410,6 +412,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 game_event.score = *score as i32;
                             }
                         }
+                        can_sleep = true;
                         Ok(game_event)
                     })();
 
@@ -423,7 +426,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 bot_resp.encode(&mut buf).unwrap();
                 println!("{:?}", buf);
             }
+            if can_sleep {
+                let sleep_for_ms = rng.gen_range(2000..=4000);
+                println!("sleeping for {}ms", sleep_for_ms);
+                tokio::time::sleep(tokio::time::Duration::from_millis(sleep_for_ms)).await;
+                println!("sending response");
+            } else {
+                println!("sending response immediately");
+            }
+
             msg.respond(&buf).await.unwrap();
+            nc.flush().await.unwrap();
         });
     }
     Ok(())
