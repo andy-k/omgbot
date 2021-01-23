@@ -55,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
     let sub = nc.subscribe("macondo.bot").await?;
     while let Some(msg) = sub.next().await {
+        let msg_received_instant = std::time::Instant::now();
         let nc = std::sync::Arc::clone(&nc);
         let bot_req = macondo::BotRequest::decode(&*msg.data)?;
 
@@ -428,7 +429,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{:?}", buf);
             }
             if can_sleep {
-                let sleep_for_ms = rng.gen_range(2000..=4000);
+                let time_for_move_ms: u128 = rng.gen_range(2000..=4000);
+                let elapsed_ms = msg_received_instant.elapsed().as_millis();
+                let sleep_for_ms = time_for_move_ms.saturating_sub(elapsed_ms) as u64;
                 println!("sleeping for {}ms", sleep_for_ms);
                 tokio::time::sleep(tokio::time::Duration::from_millis(sleep_for_ms)).await;
                 println!("sending response");
