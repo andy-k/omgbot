@@ -42,7 +42,8 @@ fn parse_english_rack(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let csw19_kwg = kwg::Kwg::from_bytes_alloc(&std::fs::read("csw19.kwg")?);
     let nwl18_kwg = kwg::Kwg::from_bytes_alloc(&std::fs::read("nwl18.kwg")?);
     let nwl20_kwg = kwg::Kwg::from_bytes_alloc(&std::fs::read("nwl20.kwg")?);
@@ -176,10 +177,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(true)
     };
 
-    let nc = nats::connect("localhost")?;
-    let sub = nc.subscribe("macondo.bot")?;
+    let nc = async_nats::connect("localhost").await?;
+    let sub = nc.subscribe("macondo.bot").await?;
     let mut buf = Vec::new();
-    for msg in sub.messages() {
+    while let Some(msg) = sub.next().await {
         let bot_req = macondo::BotRequest::decode(&*msg.data)?;
         println!("{:?}", bot_req);
 
@@ -431,7 +432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         buf.clear();
         bot_resp.encode(&mut buf)?;
         println!("{:?}", buf);
-        msg.respond(&buf)?;
+        msg.respond(&buf).await?;
     }
     Ok(())
 }
