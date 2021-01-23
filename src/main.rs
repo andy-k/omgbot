@@ -362,10 +362,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ),
                             ..macondo::GameEvent::default()
                         };
+                        can_sleep = true;
                         match &play {
                             movegen::Play::Exchange { tiles } => {
                                 if tiles.len() == 0 {
                                     game_event.set_type(macondo::game_event::Type::Pass);
+                                    can_sleep = false;
                                 } else {
                                     game_event.set_type(macondo::game_event::Type::Exchange);
                                     game_event.exchanged = format!("{}", alphabet.fmt_rack(tiles));
@@ -412,7 +414,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 game_event.score = *score as i32;
                             }
                         }
-                        can_sleep = true;
                         Ok(game_event)
                     })();
 
