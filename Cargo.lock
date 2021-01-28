@@ -92,7 +92,7 @@ dependencies = [
 [[package]]
 name = "board"
 version = "0.1.0"
-source = "git+git://github.com/andy-k/board?branch=bot/0.1#551c7274ba2f9491efc0280ba3f6ab1c7db8b907"
+source = "git+git://github.com/andy-k/board?branch=bot/0.2#982b19bb5e5fd9223c783681286b75637e481b42"
 dependencies = [
  "csv",
  "rand 0.8.3",
