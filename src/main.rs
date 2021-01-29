@@ -190,21 +190,24 @@ async fn elucubrate<
 
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
     println!("it is {}'s turn", my_nickname);
-    let (mut move_filter, mut move_picker) = match my_nickname.as_ref() {
+    let (mut move_filter, mut move_picker, would_sleep) = match my_nickname.as_ref() {
         "TiltBot1" => (
             move_filter::GenMoves::Tilt {
                 tilt: tilter,
                 bot_level: 1,
             },
             move_picker::MovePicker::Hasty,
+            true,
         ),
         "HastyBot" => (
             move_filter::GenMoves::Unfiltered,
             move_picker::MovePicker::Hasty,
+            false,
         ),
         "SimBot" | "malocal" => (
             move_filter::GenMoves::Unfiltered,
             move_picker::MovePicker::Simmer(move_picker::Simmer::new(&game_config, &kwg, &klv)),
+            false,
         ),
         _ => {
             println!("not my move, so not responding");
@@ -312,7 +315,7 @@ async fn elucubrate<
             game_event.score = *score as i32;
         }
     }
-    Ok(Some((game_event, can_sleep)))
+    Ok(Some((game_event, would_sleep && can_sleep)))
 }
 
 #[tokio::main]
