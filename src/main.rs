@@ -84,16 +84,8 @@ async fn elucubrate<
         move_picker,
         mut move_generator,
     }: ElucubrateArguments<'_, PlaceTilesType>,
-) -> Result<(macondo::GameEvent, bool), Box<dyn std::error::Error>> {
+) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
-
-    let mut move_filter = move_filter::GenMoves::Tilt {
-        tilt: tilter,
-        bot_level: 1,
-    };
-    if true {
-        move_filter = move_filter::GenMoves::Unfiltered;
-    }
 
     // rebuild the state
     game_state.reset();
@@ -134,7 +126,7 @@ async fn elucubrate<
         if !is_valid {
             let mut game_event = macondo::GameEvent::default();
             game_event.set_type(macondo::game_event::Type::Challenge);
-            return Ok((game_event, false));
+            return Ok(Some((game_event, false)));
         }
     }
 
@@ -197,6 +189,20 @@ async fn elucubrate<
         && game_state.players[game_state.turn as usize ^ 1]
             .rack
             .is_empty();
+
+    let my_nickname = &game_history.players[game_state.turn as usize].nickname;
+    println!("it is {}'s turn", my_nickname);
+    let mut move_filter = match my_nickname.as_ref() {
+        "TiltBot1" => move_filter::GenMoves::Tilt {
+            tilt: tilter,
+            bot_level: 1,
+        },
+        "HastyBot" | "malocal" => move_filter::GenMoves::Unfiltered,
+        _ => {
+            println!("not my move, so not responding");
+            return Ok(None);
+        }
+    };
 
     let board_layout = game_config.board_layout();
     display::print_board(&alphabet, &board_layout, &game_state.board_tiles);
@@ -298,7 +304,7 @@ async fn elucubrate<
             game_event.score = *score as i32;
         }
     }
-    Ok((game_event, can_sleep))
+    Ok(Some((game_event, can_sleep)))
 }
 
 #[tokio::main]
@@ -397,6 +403,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let move_generator = movegen::KurniaMoveGenerator::new(&game_config);
                     let mut buf = Vec::new();
                     let mut can_sleep = false;
+                    let mut should_reply = true;
                     {
                         let mut move_picker = move_picker::MovePicker::Hasty;
                         if true {
@@ -521,30 +528,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         let bot_resp = macondo::BotResponse {
                             response: Some(match game_event_result {
-                                Ok((game_event, ret_can_sleep)) => {
+                                Ok(Some((game_event, ret_can_sleep))) => {
                                     can_sleep = ret_can_sleep;
                                     macondo::bot_response::Response::Move(game_event)
+                                }
+                                Ok(None) => {
+                                    should_reply = false;
+                                    macondo::bot_response::Response::Error("".into())
                                 }
                                 Err(err) => macondo::bot_response::Response::Error(err.to_string()),
                             }),
                         };
-                        println!("{:?}", bot_resp);
-                        bot_resp.encode(&mut buf).unwrap();
-                        println!("{:?}", buf);
+                        if should_reply {
+                            println!("{:?}", bot_resp);
+                            bot_resp.encode(&mut buf).unwrap();
+                            println!("{:?}", buf);
+                        }
                     }
-                    if can_sleep {
-                        let time_for_move_ms: u128 =
-                            RNG.with(|rng| rng.borrow_mut().gen_range(2000..=4000));
-                        let elapsed_ms = msg_received_instant.elapsed().as_millis();
-                        let sleep_for_ms = time_for_move_ms.saturating_sub(elapsed_ms) as u64;
-                        println!("sleeping for {}ms", sleep_for_ms);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(sleep_for_ms)).await;
-                        println!("sending response");
-                    } else {
-                        println!("sending response immediately");
-                    }
+                    if should_reply {
+                        if can_sleep {
+                            let time_for_move_ms: u128 =
+                                RNG.with(|rng| rng.borrow_mut().gen_range(2000..=4000));
+                            let elapsed_ms = msg_received_instant.elapsed().as_millis();
+                            let sleep_for_ms = time_for_move_ms.saturating_sub(elapsed_ms) as u64;
+                            println!("sleeping for {}ms", sleep_for_ms);
+                            tokio::time::sleep(tokio::time::Duration::from_millis(sleep_for_ms))
+                                .await;
+                            println!("sending response");
+                        } else {
+                            println!("sending response immediately");
+                        }
 
-                    msg.respond(&buf).await.unwrap();
+                        msg.respond(&buf).await.unwrap();
+                    }
                 });
             }
         };
