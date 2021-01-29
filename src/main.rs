@@ -62,7 +62,6 @@ struct ElucubrateArguments<
     kwg: &'a std::sync::Arc<kwg::Kwg>,
     game_config: &'a std::sync::Arc<Box<game_config::GameConfig<'a>>>,
     klv: &'a std::sync::Arc<klv::Klv>,
-    move_picker: &'a mut move_picker::MovePicker<'a>,
     move_generator: movegen::KurniaMoveGenerator,
 }
 
@@ -81,7 +80,6 @@ async fn elucubrate<
         kwg,
         game_config,
         klv,
-        move_picker,
         mut move_generator,
     }: ElucubrateArguments<'_, PlaceTilesType>,
 ) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
@@ -192,12 +190,22 @@ async fn elucubrate<
 
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
     println!("it is {}'s turn", my_nickname);
-    let mut move_filter = match my_nickname.as_ref() {
-        "TiltBot1" => move_filter::GenMoves::Tilt {
-            tilt: tilter,
-            bot_level: 1,
-        },
-        "HastyBot" | "malocal" => move_filter::GenMoves::Unfiltered,
+    let (mut move_filter, mut move_picker) = match my_nickname.as_ref() {
+        "TiltBot1" => (
+            move_filter::GenMoves::Tilt {
+                tilt: tilter,
+                bot_level: 1,
+            },
+            move_picker::MovePicker::Hasty,
+        ),
+        "HastyBot" => (
+            move_filter::GenMoves::Unfiltered,
+            move_picker::MovePicker::Hasty,
+        ),
+        "SimBot" | "malocal" => (
+            move_filter::GenMoves::Unfiltered,
+            move_picker::MovePicker::Simmer(move_picker::Simmer::new(&game_config, &kwg, &klv)),
+        ),
         _ => {
             println!("not my move, so not responding");
             return Ok(None);
@@ -405,13 +413,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut can_sleep = false;
                     let mut should_reply = true;
                     {
-                        let mut move_picker = move_picker::MovePicker::Hasty;
-                        if true {
-                            move_picker = move_picker::MovePicker::Simmer(
-                                move_picker::Simmer::new(&game_config, &kwg, &klv),
-                            );
-                        }
-
                         let mut place_tiles_buf = Vec::new();
 
                         let place_tiles = |board_tiles: &mut [u8],
@@ -521,7 +522,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             kwg: &kwg,
                             game_config: &game_config,
                             klv: &klv,
-                            move_picker: &mut move_picker,
                             move_generator,
                         })
                         .await;
