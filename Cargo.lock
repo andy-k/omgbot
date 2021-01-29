@@ -92,7 +92,7 @@ dependencies = [
 [[package]]
 name = "board"
 version = "0.1.0"
-source = "git+git://github.com/andy-k/board?branch=bot/0.2#982b19bb5e5fd9223c783681286b75637e481b42"
+source = "git+git://github.com/andy-k/board?branch=bot/0.3#e5b0023cc18882a36507ea0520b1a50780ecd965"
 dependencies = [
  "csv",
  "rand 0.8.3",
@@ -102,6 +102,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shell-words",
+ "tokio",
 ]
 
 [[package]]
