@@ -1,6 +1,7 @@
-PROJECT NAME
+ABOUT
 
-This project needs a better name.
+OMGBot, Andy Kurnia's bot that can play OMGWords game on the Woogles.io
+platform using Kurnia algorithm and data structures.
 
 
 LICENSE
@@ -47,9 +48,3 @@ Generate *.kwg and *.klv files, put them in current directory when running.
 (Refer to the wolges project.)
 
 cargo run
-
-
-WHAT IS THIS PROJECT?
-
-A bot that can play OMGWords game on the Woogles.io platform, doing so using
-Kurnia algorithm and data structures.
