@@ -16,7 +16,7 @@ board = { git = "git://github.com/andy-k/board", branch = "bot/0.3" }
 prost = "0.7.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
-tokio = { version = "1.1.0", features = ["full"] }
+tokio = { version = "1.1.1", features = ["full"] }
 
 [build-dependencies]
 prost-build = "0.7.0"
