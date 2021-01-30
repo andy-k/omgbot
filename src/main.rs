@@ -4,9 +4,9 @@ pub mod macondo {
     include!(concat!(env!("OUT_DIR"), "/macondo.rs"));
 }
 
-use board::*;
 use prost::Message;
 use rand::prelude::*;
+use wolges::*;
 
 // handles '.', A-Z, a-z
 fn parse_english_played_tiles(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
@@ -20,7 +20,7 @@ fn parse_english_played_tiles(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn st
         } else if c == '.' {
             v.push(0);
         } else {
-            board::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+            wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
         }
     }
     Ok(())
@@ -36,7 +36,7 @@ fn parse_english_rack(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error
         } else if c == '?' {
             v.push(0);
         } else {
-            board::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+            wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
         }
     }
     Ok(())
@@ -56,7 +56,7 @@ struct ElucubrateArguments<
     ) -> Result<bool, Box<dyn std::error::Error>>,
 > {
     bot_req: std::sync::Arc<macondo::BotRequest>,
-    tilter: board::move_filter::Tilt<'a>,
+    tilter: wolges::move_filter::Tilt<'a>,
     game_state: game_state::GameState<'a>,
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg>,
@@ -90,7 +90,7 @@ async fn elucubrate<
     let mut last_tile_placement = !0;
     for (i, event) in game_history.events.iter().enumerate() {
         if event.cumulative as i16 as i32 != event.cumulative {
-            board::return_error!(format!("unsupported score {}", event.cumulative));
+            wolges::return_error!(format!("unsupported score {}", event.cumulative));
         }
         game_state.players[(event.nickname != game_history.players[0].nickname) as usize].score =
             event.cumulative as i16;
@@ -137,13 +137,13 @@ async fn elucubrate<
         let rack = &mut game_state.players[player_idx].rack;
         parse_english_rack(&game_history.last_known_racks[player_idx], rack)?;
         if rack.len() > game_config.rack_size() as usize {
-            board::return_error!(format!("rack of p{} is too long", player_idx));
+            wolges::return_error!(format!("rack of p{} is too long", player_idx));
         }
         for &tile in rack.iter() {
             if available_tally_buf[tile as usize] > 0 {
                 available_tally_buf[tile as usize] -= 1;
             } else {
-                board::return_error!(format!(
+                wolges::return_error!(format!(
                     "rack of p{} has too many of tile {}",
                     player_idx, tile
                 ));
@@ -156,7 +156,7 @@ async fn elucubrate<
             if available_tally_buf[tile as usize] > 0 {
                 available_tally_buf[tile as usize] -= 1;
             } else {
-                board::return_error!(format!("board has too many of tile {}", tile));
+                wolges::return_error!(format!("board has too many of tile {}", tile));
             }
         }
     }
@@ -368,7 +368,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if game_history.players.len() != 2
                 || game_history.players[0].nickname == game_history.players[1].nickname
             {
-                board::return_error!("only supports two-player games".into());
+                wolges::return_error!("only supports two-player games".into());
             }
 
             let (kwg, klv, game_config, tilter) = match game_history.lexicon.as_ref() {
@@ -377,7 +377,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "NWL20" => (&nwl20_kwg, &klv, &game_config, &nwl20_tilter),
                 "ECWL" => (&ecwl_kwg, &klv, &game_config, &ecwl_tilter),
                 _ => {
-                    board::return_error!("not familiar with the lexicon".into());
+                    wolges::return_error!("not familiar with the lexicon".into());
                 }
             };
 
@@ -425,10 +425,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let board_layout = game_config.board_layout();
                     let dim = board_layout.dim();
                     if event.row < 0 || event.row >= dim.rows as i32 {
-                        board::return_error!(format!("bad row {}", event.row));
+                        wolges::return_error!(format!("bad row {}", event.row));
                     }
                     if event.column < 0 || event.column >= dim.cols as i32 {
-                        board::return_error!(format!("bad column {}", event.column));
+                        wolges::return_error!(format!("bad column {}", event.column));
                     }
                     let (strider, lane, idx) = match event.direction() {
                         macondo::game_event::Direction::Vertical => (
@@ -444,19 +444,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     parse_english_played_tiles(&event.played_tiles, &mut place_tiles_buf)?;
                     if !place_tiles_buf.iter().any(|&t| t != 0) {
-                        board::return_error!("not enough tiles played".into());
+                        wolges::return_error!("not enough tiles played".into());
                     }
                     if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
-                        board::return_error!("has prefix".into());
+                        wolges::return_error!("has prefix".into());
                     }
                     let end_idx = idx as usize + place_tiles_buf.len();
                     match end_idx.cmp(&(strider.len() as usize)) {
                         std::cmp::Ordering::Greater => {
-                            board::return_error!("out of bounds".into());
+                            wolges::return_error!("out of bounds".into());
                         }
                         std::cmp::Ordering::Less => {
                             if board_tiles[strider.at(end_idx as i8)] != 0 {
-                                board::return_error!("has suffix".into());
+                                wolges::return_error!("has suffix".into());
                             }
                         }
                         std::cmp::Ordering::Equal => {}
@@ -465,10 +465,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let j = strider.at(i);
                         if tile == 0 {
                             if board_tiles[j] == 0 {
-                                board::return_error!("played-through tile not omitted".into());
+                                wolges::return_error!("played-through tile not omitted".into());
                             }
                         } else if board_tiles[j] != 0 {
-                            board::return_error!(
+                            wolges::return_error!(
                                 "board not vacant for non-played-through tile".into()
                             );
                         } else {

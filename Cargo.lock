@@ -90,22 +90,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "board"
-version = "0.1.0"
-source = "git+git://github.com/andy-k/board?branch=bot/0.3#e5b0023cc18882a36507ea0520b1a50780ecd965"
-dependencies = [
- "csv",
- "rand 0.8.3",
- "rand_chacha 0.3.0",
- "rustyline",
- "rustyline-derive",
- "serde",
- "serde_json",
- "shell-words",
- "tokio",
-]
-
-[[package]]
 name = "bstr"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -618,12 +602,12 @@ name = "omgbot"
 version = "0.1.0"
 dependencies = [
  "async-nats",
- "board",
  "prost",
  "prost-build",
  "rand 0.8.3",
  "rand_chacha 0.3.0",
  "tokio",
+ "wolges",
 ]
 
 [[package]]
@@ -1399,6 +1383,22 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "wolges"
+version = "0.1.0"
+source = "git+git://github.com/andy-k/wolges?branch=bot/0.4#b42845aff2b90584e0d4732e5c9d5c1106c00ea4"
+dependencies = [
+ "csv",
+ "rand 0.8.3",
+ "rand_chacha 0.3.0",
+ "rustyline",
+ "rustyline-derive",
+ "serde",
+ "serde_json",
+ "shell-words",
+ "tokio",
+]
 
 [[package]]
 name = "zeroize"
