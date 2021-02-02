@@ -265,7 +265,7 @@ async fn elucubrate<
             "{}",
             alphabet.fmt_rack(&game_state.players[game_state.turn as usize].rack)
         ),
-        ..macondo::GameEvent::default()
+        ..Default::default()
     };
     let mut can_sleep = true;
     match &play {
