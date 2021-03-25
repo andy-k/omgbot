@@ -359,7 +359,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             klv: std::sync::Arc<klv::Klv>,
             game_config: std::sync::Arc<Box<game_config::GameConfig<'a>>>,
             tilter: move_filter::Tilt<'a>,
-        };
+        }
         let recycled_stuffs = (|| -> Result<RecycledStuffs, Box<dyn std::error::Error>> {
             let bot_req = std::sync::Arc::new(macondo::BotRequest::decode(&*msg.data)?);
             println!("{:?}", bot_req);
@@ -395,6 +395,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     let bot_resp = macondo::BotResponse {
                         response: Some(macondo::bot_response::Response::Error(err.to_string())),
+                        ..Default::default()
                     };
                     println!("{:?}", bot_resp);
                     bot_resp.encode(&mut buf)?;
@@ -541,6 +542,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 Err(err) => macondo::bot_response::Response::Error(err.to_string()),
                             }),
+                            ..Default::default()
                         };
                         if should_reply {
                             println!("{:?}", bot_resp);
