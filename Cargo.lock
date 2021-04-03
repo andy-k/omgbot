@@ -1377,7 +1377,6 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 [[package]]
 name = "wolges"
 version = "0.1.0"
-source = "git+git://github.com/andy-k/wolges?branch=bot/0.6#e30a918389793791eb4e32fbce8920a58626b1e6"
 dependencies = [
  "csv",
  "rand 0.8.3",

@@ -16,8 +16,7 @@ prost = "0.7.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
 tokio = { version = "1.4.0", features = ["full"] }
-#wolges = { path = "../wolges" }
-wolges = { git = "git://github.com/andy-k/wolges", branch = "bot/0.6" }
+wolges = { path = "wolges" }
 
 [build-dependencies]
 prost-build = "0.7.0"
