@@ -57,7 +57,7 @@ struct ElucubrateArguments<
 > {
     bot_req: std::sync::Arc<macondo::BotRequest>,
     tilter: wolges::move_filter::Tilt<'a>,
-    game_state: game_state::GameState<'a>,
+    game_state: game_state::GameState,
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg>,
     game_config: &'a std::sync::Arc<Box<game_config::GameConfig<'a>>>,
