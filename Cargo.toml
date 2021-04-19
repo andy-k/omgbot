@@ -11,11 +11,11 @@ license = "MIT"
 opt-level = 3
 
 [dependencies]
-async-nats = "0.9.8"
+async-nats = "0.9.12"
 prost = "0.7.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
-tokio = { version = "1.4.0", features = ["full"] }
+tokio = { version = "1.5.0", features = ["full"] }
 wolges = { path = "wolges" }
 
 [build-dependencies]
