@@ -11,7 +11,7 @@ license = "MIT"
 opt-level = 3
 
 [dependencies]
-async-nats = "0.9.12"
+async-nats = "0.9.16"
 prost = "0.7.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
