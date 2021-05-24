@@ -53,16 +53,19 @@ struct ElucubrateArguments<
         &mut [u8],
         &macondo::GameEvent,
         Option<&kwg::Kwg>,
+        &alphabet::Alphabet,
+        bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
 > {
     bot_req: std::sync::Arc<macondo::BotRequest>,
-    tilter: wolges::move_filter::Tilt<'a>,
+    tilter: Option<wolges::move_filter::Tilt<'a>>,
     game_state: game_state::GameState,
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg>,
     game_config: &'a std::sync::Arc<Box<game_config::GameConfig<'a>>>,
     klv: &'a std::sync::Arc<klv::Klv>,
     move_generator: movegen::KurniaMoveGenerator,
+    is_jumbled: bool,
 }
 
 async fn elucubrate<
@@ -70,6 +73,8 @@ async fn elucubrate<
         &mut [u8],
         &macondo::GameEvent,
         Option<&kwg::Kwg>,
+        &alphabet::Alphabet,
+        bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
 >(
     ElucubrateArguments {
@@ -81,6 +86,7 @@ async fn elucubrate<
         game_config,
         klv,
         mut move_generator,
+        is_jumbled,
     }: ElucubrateArguments<'_, PlaceTilesType>,
 ) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
@@ -88,6 +94,7 @@ async fn elucubrate<
     // rebuild the state
     game_state.reset();
     let mut last_tile_placement = !0;
+    let alphabet = game_config.alphabet();
     for (i, event) in game_history.events.iter().enumerate() {
         if event.cumulative as i16 as i32 != event.cumulative {
             wolges::return_error!(format!("unsupported score {}", event.cumulative));
@@ -104,6 +111,8 @@ async fn elucubrate<
                         &mut game_state.board_tiles,
                         &game_history.events[last_tile_placement],
                         None,
+                        alphabet,
+                        is_jumbled,
                     )?;
                 }
                 last_tile_placement = i;
@@ -112,6 +121,7 @@ async fn elucubrate<
         }
     }
     if last_tile_placement != !0 {
+        // TODO: adjust this to properly challenge jumbled games
         let is_valid = place_tiles(
             &mut game_state.board_tiles,
             &game_history.events[last_tile_placement],
@@ -120,6 +130,8 @@ async fn elucubrate<
             } else {
                 None
             },
+            alphabet,
+            is_jumbled,
         )?;
         if !is_valid {
             let mut game_event = macondo::GameEvent::default();
@@ -190,30 +202,32 @@ async fn elucubrate<
 
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
     println!("it is {}'s turn", my_nickname);
-    let (mut move_filter, mut move_picker, would_sleep) = match my_nickname.as_ref() {
-        "TiltBot1" => (
-            move_filter::GenMoves::Tilt {
-                tilt: tilter,
-                bot_level: 1,
-            },
-            move_picker::MovePicker::Hasty,
-            true,
-        ),
-        "HastyBot" => (
-            move_filter::GenMoves::Unfiltered,
-            move_picker::MovePicker::Hasty,
-            false,
-        ),
-        "SimBot" | "malocal" => (
-            move_filter::GenMoves::Unfiltered,
-            move_picker::MovePicker::Simmer(move_picker::Simmer::new(&game_config, &kwg, &klv)),
-            false,
-        ),
-        _ => {
+    let (mut move_filter, mut move_picker, would_sleep) =
+        if my_nickname == "TiltBot1" && tilter.is_some() && !is_jumbled {
+            (
+                move_filter::GenMoves::Tilt {
+                    tilt: tilter.unwrap(),
+                    bot_level: 1,
+                },
+                move_picker::MovePicker::Hasty,
+                true,
+            )
+        } else if my_nickname == "HastyBot" || my_nickname == "malocal" {
+            (
+                move_filter::GenMoves::Unfiltered,
+                move_picker::MovePicker::Hasty,
+                false,
+            )
+        } else if my_nickname == "SimBot" && !is_jumbled {
+            (
+                move_filter::GenMoves::Unfiltered,
+                move_picker::MovePicker::Simmer(move_picker::Simmer::new(&game_config, &kwg, &klv)),
+                false,
+            )
+        } else {
             println!("not my move, so not responding");
             return Ok(None);
-        }
-    };
+        };
 
     let board_layout = game_config.board_layout();
     display::print_board(&alphabet, &board_layout, &game_state.board_tiles);
@@ -324,9 +338,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nwl18_kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("nwl18.kwg")?));
     let nwl20_kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("nwl20.kwg")?));
     let ecwl_kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("ecwl.kwg")?));
+    let csw19_kad = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("csw19.kad")?));
     let klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("leaves.klv")?));
     // one per supported config
     let game_config = std::sync::Arc::new(Box::new(game_config::make_common_english_game_config()));
+    let jumbled_game_config =
+        std::sync::Arc::new(Box::new(game_config::make_jumbled_english_game_config()));
     let csw19_tilter = move_filter::Tilt::new(
         &game_config,
         &csw19_kwg,
@@ -358,7 +375,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             kwg: std::sync::Arc<kwg::Kwg>,
             klv: std::sync::Arc<klv::Klv>,
             game_config: std::sync::Arc<Box<game_config::GameConfig<'a>>>,
-            tilter: move_filter::Tilt<'a>,
+            tilter: Option<move_filter::Tilt<'a>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs, Box<dyn std::error::Error>> {
             let bot_req = std::sync::Arc::new(macondo::BotRequest::decode(&*msg.data)?);
@@ -371,11 +388,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 wolges::return_error!("only supports two-player games".into());
             }
 
+            // TODO: there should be a better way to know if it is a jumbled game
             let (kwg, klv, game_config, tilter) = match game_history.lexicon.as_ref() {
-                "CSW19" => (&csw19_kwg, &klv, &game_config, &csw19_tilter),
-                "NWL18" => (&nwl18_kwg, &klv, &game_config, &nwl18_tilter),
-                "NWL20" => (&nwl20_kwg, &klv, &game_config, &nwl20_tilter),
-                "ECWL" => (&ecwl_kwg, &klv, &game_config, &ecwl_tilter),
+                "CSW19" => (&csw19_kad, &klv, &jumbled_game_config, None),
+                "CSW19.Classic" => (&csw19_kwg, &klv, &game_config, Some(&csw19_tilter)), // temp
+                "NWL18" => (&nwl18_kwg, &klv, &game_config, Some(&nwl18_tilter)),
+                "NWL20" => (&nwl20_kwg, &klv, &game_config, Some(&nwl20_tilter)),
+                "ECWL" => (&ecwl_kwg, &klv, &game_config, Some(&ecwl_tilter)),
                 _ => {
                     wolges::return_error!("not familiar with the lexicon".into());
                 }
@@ -386,7 +405,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kwg: std::sync::Arc::clone(&kwg),
                 klv: std::sync::Arc::clone(&klv),
                 game_config: std::sync::Arc::clone(&game_config),
-                tilter: tilter.clone(),
+                tilter: tilter.cloned(),
             })
         })();
         match recycled_stuffs {
@@ -418,106 +437,156 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut should_reply = true;
                     {
                         let mut place_tiles_buf = Vec::new();
+                        let mut place_tiles_jumbled_main_tally = Vec::new();
+                        let mut place_tiles_jumbled_perpendicular_tally = Vec::new();
 
-                        let place_tiles = |board_tiles: &mut [u8],
-                                       event: &macondo::GameEvent,
-                                       kwg: Option<&kwg::Kwg>|
-                 -> Result<bool, Box<dyn std::error::Error>> {
-                    let board_layout = game_config.board_layout();
-                    let dim = board_layout.dim();
-                    if event.row < 0 || event.row >= dim.rows as i32 {
-                        wolges::return_error!(format!("bad row {}", event.row));
-                    }
-                    if event.column < 0 || event.column >= dim.cols as i32 {
-                        wolges::return_error!(format!("bad column {}", event.column));
-                    }
-                    let (strider, lane, idx) = match event.direction() {
-                        macondo::game_event::Direction::Vertical => (
-                            dim.down(event.column as i8),
-                            event.column as i8,
-                            event.row as i8,
-                        ),
-                        macondo::game_event::Direction::Horizontal => (
-                            dim.across(event.row as i8),
-                            event.row as i8,
-                            event.column as i8,
-                        ),
-                    };
-                    parse_english_played_tiles(&event.played_tiles, &mut place_tiles_buf)?;
-                    if !place_tiles_buf.iter().any(|&t| t != 0) {
-                        wolges::return_error!("not enough tiles played".into());
-                    }
-                    if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
-                        wolges::return_error!("has prefix".into());
-                    }
-                    let end_idx = idx as usize + place_tiles_buf.len();
-                    match end_idx.cmp(&(strider.len() as usize)) {
-                        std::cmp::Ordering::Greater => {
-                            wolges::return_error!("out of bounds".into());
-                        }
-                        std::cmp::Ordering::Less => {
-                            if board_tiles[strider.at(end_idx as i8)] != 0 {
-                                wolges::return_error!("has suffix".into());
+                        let place_tiles =
+                        |board_tiles: &mut [u8],
+                         event: &macondo::GameEvent,
+                         kwg: Option<&kwg::Kwg>,
+                         alphabet: &alphabet::Alphabet,
+                         is_jumbled: bool|
+                         -> Result<bool, Box<dyn std::error::Error>> {
+                            let board_layout = game_config.board_layout();
+                            let dim = board_layout.dim();
+                            if event.row < 0 || event.row >= dim.rows as i32 {
+                                wolges::return_error!(format!("bad row {}", event.row));
                             }
-                        }
-                        std::cmp::Ordering::Equal => {}
-                    }
-                    for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                        let j = strider.at(i);
-                        if tile == 0 {
-                            if board_tiles[j] == 0 {
-                                wolges::return_error!("played-through tile not omitted".into());
+                            if event.column < 0 || event.column >= dim.cols as i32 {
+                                wolges::return_error!(format!("bad column {}", event.column));
                             }
-                        } else if board_tiles[j] != 0 {
-                            wolges::return_error!(
-                                "board not vacant for non-played-through tile".into()
-                            );
-                        } else {
-                            board_tiles[j] = tile;
-                        }
-                    }
-                    if let Some(kwg) = kwg {
-                        let mut p_main = 0; // dawg
-                        for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                            let b = board_tiles[strider.at(i)];
-                            p_main = kwg.seek(p_main, b & 0x7f);
-                            if tile != 0 {
-                                let perpendicular_strider = match event.direction() {
-                                    macondo::game_event::Direction::Vertical => dim.across(i as i8),
-                                    macondo::game_event::Direction::Horizontal => dim.down(i as i8),
-                                };
-                                let mut j = lane;
-                                while j > 0 && board_tiles[perpendicular_strider.at(j - 1)] != 0 {
-                                    j -= 1;
+                            let (strider, lane, idx) = match event.direction() {
+                                macondo::game_event::Direction::Vertical => (
+                                    dim.down(event.column as i8),
+                                    event.column as i8,
+                                    event.row as i8,
+                                ),
+                                macondo::game_event::Direction::Horizontal => (
+                                    dim.across(event.row as i8),
+                                    event.row as i8,
+                                    event.column as i8,
+                                ),
+                            };
+                            parse_english_played_tiles(&event.played_tiles, &mut place_tiles_buf)?;
+                            if !place_tiles_buf.iter().any(|&t| t != 0) {
+                                wolges::return_error!("not enough tiles played".into());
+                            }
+                            if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
+                                wolges::return_error!("has prefix".into());
+                            }
+                            let end_idx = idx as usize + place_tiles_buf.len();
+                            match end_idx.cmp(&(strider.len() as usize)) {
+                                std::cmp::Ordering::Greater => {
+                                    wolges::return_error!("out of bounds".into());
                                 }
-                                let perpendicular_strider_len = perpendicular_strider.len();
-                                if j < lane
-                                    || (j + 1 < perpendicular_strider_len
-                                        && board_tiles[perpendicular_strider.at(j + 1)] != 0)
-                                {
-                                    let mut p_perpendicular = 0;
-                                    for j in j..perpendicular_strider_len {
-                                        let perpendicular_tile =
-                                            board_tiles[perpendicular_strider.at(j)];
-                                        if perpendicular_tile == 0 {
-                                            break;
+                                std::cmp::Ordering::Less => {
+                                    if board_tiles[strider.at(end_idx as i8)] != 0 {
+                                        wolges::return_error!("has suffix".into());
+                                    }
+                                }
+                                std::cmp::Ordering::Equal => {}
+                            }
+                            for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
+                                let j = strider.at(i);
+                                if tile == 0 {
+                                    if board_tiles[j] == 0 {
+                                        wolges::return_error!(
+                                            "played-through tile not omitted".into()
+                                        );
+                                    }
+                                } else if board_tiles[j] != 0 {
+                                    wolges::return_error!(
+                                        "board not vacant for non-played-through tile".into()
+                                    );
+                                } else {
+                                    board_tiles[j] = tile;
+                                }
+                            }
+                            if let Some(kwg) = kwg {
+                                let mut p_main = 0; // dawg
+                                let main_tally = &mut place_tiles_jumbled_main_tally;
+                                if is_jumbled {
+                                    main_tally.clear();
+                                    main_tally.resize(alphabet.len() as usize, 0);
+                                }
+                                for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
+                                    let b = board_tiles[strider.at(i)];
+                                    if is_jumbled {
+                                        main_tally[(b & 0x7f) as usize] += 1;
+                                    } else {
+                                        p_main = kwg.seek(p_main, b & 0x7f);
+                                    }
+                                    if tile != 0 {
+                                        let perpendicular_strider = match event.direction() {
+                                            macondo::game_event::Direction::Vertical => {
+                                                dim.across(i as i8)
+                                            }
+                                            macondo::game_event::Direction::Horizontal => {
+                                                dim.down(i as i8)
+                                            }
+                                        };
+                                        let mut j = lane;
+                                        while j > 0
+                                            && board_tiles[perpendicular_strider.at(j - 1)] != 0
+                                        {
+                                            j -= 1;
                                         }
-                                        p_perpendicular =
-                                            kwg.seek(p_perpendicular, perpendicular_tile & 0x7f);
-                                    }
-                                    if p_perpendicular < 0 || !kwg[p_perpendicular].accepts() {
-                                        return Ok(false);
+                                        let perpendicular_strider_len = perpendicular_strider.len();
+                                        if j < lane
+                                            || (j + 1 < perpendicular_strider_len
+                                                && board_tiles[perpendicular_strider.at(j + 1)]
+                                                    != 0)
+                                        {
+                                            let mut p_perpendicular = 0;
+                                            let perpendicular_tally =
+                                                &mut place_tiles_jumbled_perpendicular_tally;
+                                            if is_jumbled {
+                                                perpendicular_tally.clear();
+                                                perpendicular_tally
+                                                    .resize(alphabet.len() as usize, 0);
+                                            }
+                                            for j in j..perpendicular_strider_len {
+                                                let perpendicular_tile =
+                                                    board_tiles[perpendicular_strider.at(j)];
+                                                if perpendicular_tile == 0 {
+                                                    break;
+                                                }
+                                                if is_jumbled {
+                                                    perpendicular_tally
+                                                        [(perpendicular_tile & 0x7f) as usize] += 1;
+                                                } else {
+                                                    p_perpendicular = kwg.seek(
+                                                        p_perpendicular,
+                                                        perpendicular_tile & 0x7f,
+                                                    );
+                                                }
+                                            }
+                                            if if is_jumbled {
+                                                !kwg.accepts_alpha(perpendicular_tally)
+                                            } else {
+                                                p_perpendicular < 0
+                                                    || !kwg[p_perpendicular].accepts()
+                                            } {
+                                                return Ok(false);
+                                            }
+                                        }
                                     }
                                 }
+                                if if is_jumbled {
+                                    !kwg.accepts_alpha(main_tally)
+                                } else {
+                                    p_main < 0 || !kwg[p_main].accepts()
+                                } {
+                                    return Ok(false);
+                                }
                             }
-                        }
-                        if p_main < 0 || !kwg[p_main].accepts() {
-                            return Ok(false);
-                        }
-                    }
-                    Ok(true)
-                };
+                            Ok(true)
+                        };
 
+                        let is_jumbled = match game_config.game_rules() {
+                            game_config::GameRules::Classic => false,
+                            game_config::GameRules::Jumbled => true,
+                        };
                         let game_event_result = elucubrate(ElucubrateArguments {
                             bot_req,
                             tilter,
@@ -527,6 +596,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             game_config: &game_config,
                             klv: &klv,
                             move_generator,
+                            is_jumbled,
                         })
                         .await;
 
