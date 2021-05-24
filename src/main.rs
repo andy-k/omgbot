@@ -388,16 +388,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 wolges::return_error!("only supports two-player games".into());
             }
 
-            // TODO: there should be a better way to know if it is a jumbled game
-            let (kwg, klv, game_config, tilter) = match game_history.lexicon.as_ref() {
-                "CSW19" => (&csw19_kad, &klv, &jumbled_game_config, None),
-                "CSW19.Classic" => (&csw19_kwg, &klv, &game_config, Some(&csw19_tilter)), // temp
-                "NWL18" => (&nwl18_kwg, &klv, &game_config, Some(&nwl18_tilter)),
-                "NWL20" => (&nwl20_kwg, &klv, &game_config, Some(&nwl20_tilter)),
-                "ECWL" => (&ecwl_kwg, &klv, &game_config, Some(&ecwl_tilter)),
-                _ => {
-                    wolges::return_error!("not familiar with the lexicon".into());
-                }
+            let is_jumbled = game_history.variant == "wordsmog";
+            let (kwg, klv, game_config, tilter) = if game_history.lexicon == "CSW19" && is_jumbled {
+                (&csw19_kad, &klv, &jumbled_game_config, None)
+            } else if game_history.lexicon == "CSW19" && !is_jumbled {
+                (&csw19_kwg, &klv, &game_config, Some(&csw19_tilter))
+            } else if game_history.lexicon == "NWL18" && !is_jumbled {
+                (&nwl18_kwg, &klv, &game_config, Some(&nwl18_tilter))
+            } else if game_history.lexicon == "NWL20" && !is_jumbled {
+                (&nwl20_kwg, &klv, &game_config, Some(&nwl20_tilter))
+            } else if game_history.lexicon == "ECWL" && !is_jumbled {
+                (&ecwl_kwg, &klv, &game_config, Some(&ecwl_tilter))
+            } else {
+                wolges::return_error!("not familiar with the lexicon".into());
             };
 
             Ok(RecycledStuffs {
