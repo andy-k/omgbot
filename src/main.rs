@@ -334,36 +334,43 @@ async fn elucubrate<
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let csw19_kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("csw19.kwg")?));
-    let nwl18_kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("nwl18.kwg")?));
-    let nwl20_kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("nwl20.kwg")?));
-    let ecwl_kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("ecwl.kwg")?));
-    let csw19_kad = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&std::fs::read("csw19.kad")?));
     let klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("leaves.klv")?));
     // one per supported config
     let game_config = std::sync::Arc::new(Box::new(game_config::make_common_english_game_config()));
     let jumbled_game_config =
         std::sync::Arc::new(Box::new(game_config::make_jumbled_english_game_config()));
-    let csw19_tilter = move_filter::Tilt::new(
-        &game_config,
-        &csw19_kwg,
-        move_filter::Tilt::length_importances(),
-    );
-    let nwl18_tilter = move_filter::Tilt::new(
-        &game_config,
-        &nwl18_kwg,
-        move_filter::Tilt::length_importances(),
-    );
-    let nwl20_tilter = move_filter::Tilt::new(
-        &game_config,
-        &nwl20_kwg,
-        move_filter::Tilt::length_importances(),
-    );
-    let ecwl_tilter = move_filter::Tilt::new(
-        &game_config,
-        &ecwl_kwg,
-        move_filter::Tilt::length_importances(),
-    );
+    let lexicons = ["CSW19", "CSW19X", "ECWL", "NSWL20", "NWL18", "NWL20"];
+    let mut kwgs = std::collections::HashMap::new();
+    let mut tilters = std::collections::HashMap::new();
+    let mut kads = std::collections::HashMap::new();
+    for lexicon in lexicons.iter() {
+        match std::fs::read(format!("{}.kwg", lexicon)) {
+            Ok(kwg_bytes) => {
+                let kwg_arc = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kwg_bytes));
+                tilters.insert(
+                    lexicon.to_string(),
+                    move_filter::Tilt::new(
+                        &game_config,
+                        &kwg_arc.clone(),
+                        move_filter::Tilt::length_importances(),
+                    ),
+                );
+                kwgs.insert(lexicon.to_string(), kwg_arc);
+            }
+            Err(err) => {
+                eprintln!("warning: {}.kwg: {}", lexicon, err);
+            }
+        }
+        match std::fs::read(format!("{}.kad", lexicon)) {
+            Ok(kad_bytes) => {
+                let kad_arc = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kad_bytes));
+                kads.insert(lexicon.to_string(), kad_arc);
+            }
+            Err(err) => {
+                eprintln!("warning: {}.kad: {}", lexicon, err);
+            }
+        }
+    }
 
     let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
     let sub = nc.subscribe("macondo.bot").await?;
@@ -389,18 +396,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let is_jumbled = game_history.variant == "wordsmog";
-            let (kwg, klv, game_config, tilter) = if game_history.lexicon == "CSW19" && is_jumbled {
-                (&csw19_kad, &klv, &jumbled_game_config, None)
-            } else if game_history.lexicon == "CSW19" && !is_jumbled {
-                (&csw19_kwg, &klv, &game_config, Some(&csw19_tilter))
-            } else if game_history.lexicon == "NWL18" && !is_jumbled {
-                (&nwl18_kwg, &klv, &game_config, Some(&nwl18_tilter))
-            } else if game_history.lexicon == "NWL20" && !is_jumbled {
-                (&nwl20_kwg, &klv, &game_config, Some(&nwl20_tilter))
-            } else if game_history.lexicon == "ECWL" && !is_jumbled {
-                (&ecwl_kwg, &klv, &game_config, Some(&ecwl_tilter))
-            } else {
-                wolges::return_error!("not familiar with the lexicon".into());
+            let (kwg, klv, game_config, tilter) = match is_jumbled {
+                true => {
+                    if let Some(kad) = kads.get(&game_history.lexicon) {
+                        (kad, &klv, &jumbled_game_config, None)
+                    } else {
+                        wolges::return_error!("not familiar with the lexicon".into());
+                    }
+                }
+                false => {
+                    if let Some(kwg) = kwgs.get(&game_history.lexicon) {
+                        (
+                            kwg,
+                            &klv,
+                            &jumbled_game_config,
+                            tilters.get(&game_history.lexicon),
+                        )
+                    } else {
+                        wolges::return_error!("not familiar with the lexicon".into());
+                    }
+                }
             };
 
             Ok(RecycledStuffs {
