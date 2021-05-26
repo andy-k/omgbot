@@ -121,7 +121,6 @@ async fn elucubrate<
         }
     }
     if last_tile_placement != !0 {
-        // TODO: adjust this to properly challenge jumbled games
         let is_valid = place_tiles(
             &mut game_state.board_tiles,
             &game_history.events[last_tile_placement],
@@ -406,12 +405,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 false => {
                     if let Some(kwg) = kwgs.get(&game_history.lexicon) {
-                        (
-                            kwg,
-                            &klv,
-                            &jumbled_game_config,
-                            tilters.get(&game_history.lexicon),
-                        )
+                        (kwg, &klv, &game_config, tilters.get(&game_history.lexicon))
                     } else {
                         wolges::return_error!("not familiar with the lexicon".into());
                     }
