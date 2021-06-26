@@ -8,6 +8,7 @@ use prost::Message;
 use rand::prelude::*;
 use wolges::*;
 
+/*
 // handles '.', A-Z, a-z
 fn parse_english_played_tiles(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
     v.clear();
@@ -41,6 +42,56 @@ fn parse_english_rack(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error
     }
     Ok(())
 }
+*/
+
+// handles '.' and the equivalent of A-Z, a-z
+fn parse_played_tiles(
+    alphabet_reader: &alphabet::AlphabetReader,
+    s: &str,
+    v: &mut Vec<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    v.clear();
+    if !s.is_empty() {
+        v.reserve(s.len());
+        let sb = s.as_bytes();
+        let mut ix = 0;
+        while ix < sb.len() {
+            if let Some((tile, end_ix)) = alphabet_reader.next_tile(sb, ix) {
+                v.push(tile);
+                ix = end_ix;
+            } else if sb[ix] == b'.' {
+                v.push(0);
+                ix += 1;
+            } else {
+                wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+            }
+        }
+    }
+    Ok(())
+}
+
+// handles the equivalent of '?', A-Z
+fn parse_rack(
+    alphabet_reader: &alphabet::AlphabetReader,
+    s: &str,
+    v: &mut Vec<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    v.clear();
+    if !s.is_empty() {
+        v.reserve(s.len());
+        let sb = s.as_bytes();
+        let mut ix = 0;
+        while ix < sb.len() {
+            if let Some((tile, end_ix)) = alphabet_reader.next_tile(sb, ix) {
+                v.push(tile);
+                ix = end_ix;
+            } else {
+                wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+            }
+        }
+    }
+    Ok(())
+}
 
 thread_local! {
     static RNG: std::cell::RefCell<Box<dyn RngCore>> =
@@ -66,6 +117,7 @@ struct ElucubrateArguments<
     klv: &'a std::sync::Arc<klv::Klv>,
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
+    rack_reader: &'a std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
 }
 
 async fn elucubrate<
@@ -87,6 +139,7 @@ async fn elucubrate<
         klv,
         mut move_generator,
         is_jumbled,
+        rack_reader,
     }: ElucubrateArguments<'_, PlaceTilesType>,
 ) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
@@ -146,7 +199,11 @@ async fn elucubrate<
     available_tally_buf.extend((0..alphabet.len()).map(|tile| alphabet.freq(tile)));
     for player_idx in 0..2 {
         let rack = &mut game_state.players[player_idx].rack;
-        parse_english_rack(&game_history.last_known_racks[player_idx], rack)?;
+        parse_rack(
+            &rack_reader,
+            &game_history.last_known_racks[player_idx],
+            rack,
+        )?;
         if rack.len() > game_config.rack_size() as usize {
             wolges::return_error!(format!("rack of p{} is too long", player_idx));
         }
@@ -331,25 +388,95 @@ async fn elucubrate<
     Ok(Some((game_event, would_sleep && can_sleep)))
 }
 
+enum Language {
+    English,
+    German,
+    Norwegian,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("leaves.klv")?));
+    let english_klv =
+        std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("leaves.klv")?));
+    let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
     // one per supported config
     let game_config = std::sync::Arc::new(Box::new(game_config::make_common_english_game_config()));
     let jumbled_game_config =
         std::sync::Arc::new(Box::new(game_config::make_jumbled_english_game_config()));
-    let lexicons = ["CSW19", "CSW19X", "ECWL", "NSWL20", "NWL18", "NWL20"];
+    let german_game_config = std::sync::Arc::new(Box::new(game_config::make_german_game_config()));
+    let jumbled_german_game_config =
+        std::sync::Arc::new(Box::new(game_config::make_jumbled_german_game_config()));
+    let norwegian_game_config =
+        std::sync::Arc::new(Box::new(game_config::make_norwegian_game_config()));
+    let jumbled_norwegian_game_config =
+        std::sync::Arc::new(Box::new(game_config::make_jumbled_norwegian_game_config()));
+    let english_rack_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_racks(game_config.alphabet()),
+    ));
+    let german_rack_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_racks(german_game_config.alphabet()),
+    ));
+    let norwergian_rack_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_racks(norwegian_game_config.alphabet()),
+    ));
+    let english_play_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_plays(game_config.alphabet()),
+    ));
+    let german_play_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_plays(german_game_config.alphabet()),
+    ));
+    let norwergian_play_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_plays(norwegian_game_config.alphabet()),
+    ));
+    let lexicons = [
+        ("CSW19", Language::English),
+        ("CSW19X", Language::English),
+        ("Deutsch", Language::German),
+        ("ECWL", Language::English),
+        ("NSF20", Language::Norwegian),
+        ("NSWL20", Language::English),
+        ("NWL18", Language::English),
+        ("NWL20", Language::English),
+    ];
+    let mut game_configs = std::collections::HashMap::new();
+    let mut jumbled_game_configs = std::collections::HashMap::new();
+    let mut klvs = std::collections::HashMap::new();
     let mut kwgs = std::collections::HashMap::new();
     let mut tilters = std::collections::HashMap::new();
     let mut kads = std::collections::HashMap::new();
-    for lexicon in lexicons.iter() {
+    let mut rack_readers = std::collections::HashMap::new();
+    let mut play_readers = std::collections::HashMap::new();
+    for (lexicon, language) in lexicons.iter() {
+        game_configs.insert(
+            lexicon.to_string(),
+            match language {
+                Language::English => game_config.clone(),
+                Language::German => german_game_config.clone(),
+                Language::Norwegian => norwegian_game_config.clone(),
+            },
+        );
+        jumbled_game_configs.insert(
+            lexicon.to_string(),
+            match language {
+                Language::English => jumbled_game_config.clone(),
+                Language::German => jumbled_german_game_config.clone(),
+                Language::Norwegian => jumbled_norwegian_game_config.clone(),
+            },
+        );
+        klvs.insert(
+            lexicon.to_string(),
+            match language {
+                Language::English => english_klv.clone(),
+                Language::German | Language::Norwegian => noleave_klv.clone(),
+            },
+        );
         match std::fs::read(format!("{}.kwg", lexicon)) {
             Ok(kwg_bytes) => {
                 let kwg_arc = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kwg_bytes));
                 tilters.insert(
                     lexicon.to_string(),
                     move_filter::Tilt::new(
-                        &game_config,
+                        &game_configs.get(&lexicon.to_string()).unwrap(),
                         &kwg_arc.clone(),
                         move_filter::Tilt::length_importances(),
                     ),
@@ -369,6 +496,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("warning: {}.kad: {}", lexicon, err);
             }
         }
+        rack_readers.insert(
+            lexicon.to_string(),
+            match language {
+                Language::English => english_rack_reader.clone(),
+                Language::German => german_rack_reader.clone(),
+                Language::Norwegian => norwergian_rack_reader.clone(),
+            },
+        );
+        play_readers.insert(
+            lexicon.to_string(),
+            match language {
+                Language::English => english_play_reader.clone(),
+                Language::German => german_play_reader.clone(),
+                Language::Norwegian => norwergian_play_reader.clone(),
+            },
+        );
     }
 
     let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
@@ -382,6 +525,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             klv: std::sync::Arc<klv::Klv>,
             game_config: std::sync::Arc<Box<game_config::GameConfig<'a>>>,
             tilter: Option<move_filter::Tilt<'a>>,
+            rack_reader: std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
+            play_reader: std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs, Box<dyn std::error::Error>> {
             let bot_req = std::sync::Arc::new(macondo::BotRequest::decode(&*msg.data)?);
@@ -395,22 +540,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let is_jumbled = game_history.variant == "wordsmog";
-            let (kwg, klv, game_config, tilter) = match is_jumbled {
+            // todo: transpose these?
+            let game_config = match is_jumbled {
+                true => &jumbled_game_configs,
+                false => &game_configs,
+            }
+            .get(&game_history.lexicon)
+            .ok_or("not familiar with the lexicon")?;
+            let klv = klvs
+                .get(&game_history.lexicon)
+                .ok_or("not familiar with the lexicon")?;
+            let (kwg, tilter) = match is_jumbled {
                 true => {
-                    if let Some(kad) = kads.get(&game_history.lexicon) {
-                        (kad, &klv, &jumbled_game_config, None)
-                    } else {
-                        wolges::return_error!("not familiar with the lexicon".into());
-                    }
+                    let kad = kads
+                        .get(&game_history.lexicon)
+                        .ok_or("not familiar with the lexicon")?;
+                    (kad, None)
                 }
                 false => {
-                    if let Some(kwg) = kwgs.get(&game_history.lexicon) {
-                        (kwg, &klv, &game_config, tilters.get(&game_history.lexicon))
-                    } else {
-                        wolges::return_error!("not familiar with the lexicon".into());
-                    }
+                    let kwg = kwgs
+                        .get(&game_history.lexicon)
+                        .ok_or("not familiar with the lexicon")?;
+                    (kwg, tilters.get(&game_history.lexicon))
                 }
             };
+            let rack_reader = rack_readers
+                .get(&game_history.lexicon)
+                .ok_or("not familiar with the lexicon")?;
+            let play_reader = play_readers
+                .get(&game_history.lexicon)
+                .ok_or("not familiar with the lexicon")?;
 
             Ok(RecycledStuffs {
                 bot_req: std::sync::Arc::clone(&bot_req),
@@ -418,6 +577,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 klv: std::sync::Arc::clone(&klv),
                 game_config: std::sync::Arc::clone(&game_config),
                 tilter: tilter.cloned(),
+                rack_reader: std::sync::Arc::clone(&rack_reader),
+                play_reader: std::sync::Arc::clone(&play_reader),
             })
         })();
         match recycled_stuffs {
@@ -440,6 +601,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 klv,
                 game_config,
                 tilter,
+                rack_reader,
+                play_reader,
             }) => {
                 tokio::spawn(async move {
                     let game_state = game_state::GameState::new(&game_config);
@@ -479,7 +642,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     event.column as i8,
                                 ),
                             };
-                            parse_english_played_tiles(&event.played_tiles, &mut place_tiles_buf)?;
+                            parse_played_tiles(&play_reader, &event.played_tiles, &mut place_tiles_buf)?;
                             if !place_tiles_buf.iter().any(|&t| t != 0) {
                                 wolges::return_error!("not enough tiles played".into());
                             }
@@ -609,6 +772,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             klv: &klv,
                             move_generator,
                             is_jumbled,
+                            rack_reader: &rack_reader,
                         })
                         .await;
 
