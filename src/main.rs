@@ -431,12 +431,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lexicons = [
         ("CSW19", Language::English),
         ("CSW19X", Language::English),
-        ("Deutsch", Language::German),
         ("ECWL", Language::English),
         ("NSF20", Language::Norwegian),
         ("NSWL20", Language::English),
         ("NWL18", Language::English),
         ("NWL20", Language::English),
+        ("RD28", Language::German),
     ];
     let mut game_configs = std::collections::HashMap::new();
     let mut jumbled_game_configs = std::collections::HashMap::new();
