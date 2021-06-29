@@ -397,8 +397,11 @@ enum Language {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let english_klv =
-        std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("leaves.klv")?));
-    let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
+        std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?));
+    let german_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("german.klv")?));
+    let norwegian_klv =
+        std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("norwegian.klv")?));
+    //let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
     // one per supported config
     let game_config = std::sync::Arc::new(Box::new(game_config::make_common_english_game_config()));
     let jumbled_game_config =
@@ -432,7 +435,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("CSW19", Language::English),
         ("CSW19X", Language::English),
         ("ECWL", Language::English),
-        ("NSF20", Language::Norwegian),
+        ("NSF21", Language::Norwegian),
         ("NSWL20", Language::English),
         ("NWL18", Language::English),
         ("NWL20", Language::English),
@@ -467,7 +470,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             lexicon.to_string(),
             match language {
                 Language::English => english_klv.clone(),
-                Language::German | Language::Norwegian => noleave_klv.clone(),
+                Language::German => german_klv.clone(),
+                Language::Norwegian => norwegian_klv.clone(),
             },
         );
         match std::fs::read(format!("{}.kwg", lexicon)) {
