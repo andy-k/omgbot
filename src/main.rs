@@ -390,6 +390,7 @@ async fn elucubrate<
 
 enum Language {
     English,
+    French,
     German,
     Norwegian,
 }
@@ -398,6 +399,7 @@ enum Language {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let english_klv =
         std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?));
+    let french_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
     let german_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("german.klv")?));
     let norwegian_klv =
         std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("norwegian.klv")?));
@@ -406,6 +408,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let game_config = std::sync::Arc::new(Box::new(game_config::make_common_english_game_config()));
     let jumbled_game_config =
         std::sync::Arc::new(Box::new(game_config::make_jumbled_english_game_config()));
+    let french_game_config = std::sync::Arc::new(Box::new(game_config::make_french_game_config()));
+    let jumbled_french_game_config =
+        std::sync::Arc::new(Box::new(game_config::make_jumbled_french_game_config()));
     let german_game_config = std::sync::Arc::new(Box::new(game_config::make_german_game_config()));
     let jumbled_german_game_config =
         std::sync::Arc::new(Box::new(game_config::make_jumbled_german_game_config()));
@@ -416,6 +421,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let english_rack_reader = std::sync::Arc::new(Box::new(
         alphabet::AlphabetReader::new_for_racks(game_config.alphabet()),
     ));
+    let french_rack_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_racks(french_game_config.alphabet()),
+    ));
     let german_rack_reader = std::sync::Arc::new(Box::new(
         alphabet::AlphabetReader::new_for_racks(german_game_config.alphabet()),
     ));
@@ -424,6 +432,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     let english_play_reader = std::sync::Arc::new(Box::new(
         alphabet::AlphabetReader::new_for_plays(game_config.alphabet()),
+    ));
+    let french_play_reader = std::sync::Arc::new(Box::new(
+        alphabet::AlphabetReader::new_for_plays(french_game_config.alphabet()),
     ));
     let german_play_reader = std::sync::Arc::new(Box::new(
         alphabet::AlphabetReader::new_for_plays(german_game_config.alphabet()),
@@ -435,6 +446,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("CSW19", Language::English),
         ("CSW19X", Language::English),
         ("ECWL", Language::English),
+        ("FRA20", Language::French),
         ("NSF21", Language::Norwegian),
         ("NSWL20", Language::English),
         ("NWL18", Language::English),
@@ -454,6 +466,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             lexicon.to_string(),
             match language {
                 Language::English => game_config.clone(),
+                Language::French => french_game_config.clone(),
                 Language::German => german_game_config.clone(),
                 Language::Norwegian => norwegian_game_config.clone(),
             },
@@ -462,6 +475,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             lexicon.to_string(),
             match language {
                 Language::English => jumbled_game_config.clone(),
+                Language::French => jumbled_french_game_config.clone(),
                 Language::German => jumbled_german_game_config.clone(),
                 Language::Norwegian => jumbled_norwegian_game_config.clone(),
             },
@@ -470,6 +484,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             lexicon.to_string(),
             match language {
                 Language::English => english_klv.clone(),
+                Language::French => french_klv.clone(),
                 Language::German => german_klv.clone(),
                 Language::Norwegian => norwegian_klv.clone(),
             },
@@ -504,6 +519,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             lexicon.to_string(),
             match language {
                 Language::English => english_rack_reader.clone(),
+                Language::French => french_rack_reader.clone(),
                 Language::German => german_rack_reader.clone(),
                 Language::Norwegian => norwergian_rack_reader.clone(),
             },
@@ -512,6 +528,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             lexicon.to_string(),
             match language {
                 Language::English => english_play_reader.clone(),
+                Language::French => french_play_reader.clone(),
                 Language::German => german_play_reader.clone(),
                 Language::Norwegian => norwergian_play_reader.clone(),
             },
