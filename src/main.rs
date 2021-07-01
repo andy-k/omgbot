@@ -399,7 +399,7 @@ enum Language {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let english_klv =
         std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?));
-    let french_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
+    let french_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("french.klv")?));
     let german_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("german.klv")?));
     let norwegian_klv =
         std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("norwegian.klv")?));
