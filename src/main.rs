@@ -363,13 +363,13 @@ async fn elucubrate<
                 game_event.row = *idx as i32;
                 game_event.column = *lane as i32;
                 game_event.set_direction(macondo::game_event::Direction::Vertical);
-                game_event.position = format!("{}{}", (*lane as u8 + 0x41) as char, idx + 1);
+                game_event.position = format!("{}{}", display::column(*lane), idx + 1);
                 strider = dim.down(*lane);
             } else {
                 game_event.row = *lane as i32;
                 game_event.column = *idx as i32;
                 game_event.set_direction(macondo::game_event::Direction::Horizontal);
-                game_event.position = format!("{}{}", lane + 1, (*idx as u8 + 0x41) as char);
+                game_event.position = format!("{}{}", lane + 1, display::column(*idx));
                 strider = dim.across(*lane);
             }
             let mut s = String::new();
