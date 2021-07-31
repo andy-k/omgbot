@@ -178,7 +178,7 @@ async fn elucubrate<
             &mut game_state.board_tiles,
             &game_history.events[last_tile_placement],
             if last_tile_placement == game_history.events.len() - 1 {
-                Some(&kwg)
+                Some(kwg)
             } else {
                 None
             },
@@ -200,7 +200,7 @@ async fn elucubrate<
     for player_idx in 0..2 {
         let rack = &mut game_state.players[player_idx].rack;
         parse_rack(
-            &rack_reader,
+            rack_reader,
             &game_history.last_known_racks[player_idx],
             rack,
         )?;
@@ -277,7 +277,7 @@ async fn elucubrate<
         } else if my_nickname == "SimBot" && !is_jumbled {
             (
                 move_filter::GenMoves::Unfiltered,
-                move_picker::MovePicker::Simmer(move_picker::Simmer::new(&game_config, &kwg, &klv)),
+                move_picker::MovePicker::Simmer(move_picker::Simmer::new(game_config, kwg, klv)),
                 false,
             )
         } else {
@@ -286,7 +286,7 @@ async fn elucubrate<
         };
 
     let board_layout = game_config.board_layout();
-    display::print_board(&alphabet, &board_layout, &game_state.board_tiles);
+    display::print_board(alphabet, board_layout, &game_state.board_tiles);
     println!(
         "{}",
         alphabet.fmt_rack(&game_state.players[game_state.turn as usize].rack)
@@ -308,16 +308,16 @@ async fn elucubrate<
 
     let board_snapshot = &movegen::BoardSnapshot {
         board_tiles: &game_state.board_tiles,
-        game_config: &game_config,
-        kwg: &kwg,
-        klv: &klv,
+        game_config,
+        kwg,
+        klv,
     };
 
     move_picker
         .pick_a_move_async(
             &mut move_filter,
             &mut move_generator,
-            &board_snapshot,
+            board_snapshot,
             &game_state,
             if pass_or_challenge {
                 &[]
@@ -495,7 +495,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tilters.insert(
                     lexicon.to_string(),
                     move_filter::Tilt::new(
-                        &game_configs.get(&lexicon.to_string()).unwrap(),
+                        game_configs.get(&lexicon.to_string()).unwrap(),
                         &kwg_arc.clone(),
                         move_filter::Tilt::length_importances(),
                     ),
@@ -594,12 +594,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Ok(RecycledStuffs {
                 bot_req: std::sync::Arc::clone(&bot_req),
-                kwg: std::sync::Arc::clone(&kwg),
-                klv: std::sync::Arc::clone(&klv),
-                game_config: std::sync::Arc::clone(&game_config),
+                kwg: std::sync::Arc::clone(kwg),
+                klv: std::sync::Arc::clone(klv),
+                game_config: std::sync::Arc::clone(game_config),
                 tilter: tilter.cloned(),
-                rack_reader: std::sync::Arc::clone(&rack_reader),
-                play_reader: std::sync::Arc::clone(&play_reader),
+                rack_reader: std::sync::Arc::clone(rack_reader),
+                play_reader: std::sync::Arc::clone(play_reader),
             })
         })();
         match recycled_stuffs {
