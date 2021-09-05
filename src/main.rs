@@ -72,7 +72,7 @@ struct ElucubrateArguments<
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
 > {
-    bot_req: std::sync::Arc<macondo::BotRequest>,
+    bot_req: Box<macondo::BotRequest>,
     tilter: Option<wolges::move_filter::Tilt<'a>>,
     game_state: game_state::GameState,
     place_tiles: PlaceTilesType,
@@ -519,7 +519,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(msg) = sub.next().await {
         let msg_received_instant = std::time::Instant::now();
         struct RecycledStuffs<'a> {
-            bot_req: std::sync::Arc<macondo::BotRequest>,
+            bot_req: Box<macondo::BotRequest>,
             kwg: std::sync::Arc<kwg::Kwg>,
             klv: std::sync::Arc<klv::Klv>,
             game_config: std::sync::Arc<game_config::GameConfig<'a>>,
@@ -528,7 +528,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             play_reader: std::sync::Arc<alphabet::AlphabetReader<'a>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
-            let bot_req = std::sync::Arc::new(macondo::BotRequest::decode(&*msg.data)?);
+            let bot_req = Box::new(macondo::BotRequest::decode(&*msg.data)?);
             println!("{:?}", bot_req);
 
             let game_history = bot_req.game_history.as_ref().ok_or("need a game history")?;
@@ -571,7 +571,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .ok_or("not familiar with the lexicon")?;
 
             Ok(RecycledStuffs {
-                bot_req: std::sync::Arc::clone(&bot_req),
+                bot_req,
                 kwg: std::sync::Arc::clone(kwg),
                 klv: std::sync::Arc::clone(klv),
                 game_config: std::sync::Arc::clone(game_config),
