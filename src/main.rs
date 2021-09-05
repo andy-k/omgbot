@@ -8,42 +8,6 @@ use prost::Message;
 use rand::prelude::*;
 use wolges::*;
 
-/*
-// handles '.', A-Z, a-z
-fn parse_english_played_tiles(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
-    v.clear();
-    v.reserve(s.len());
-    for c in s.chars() {
-        if ('A'..='Z').contains(&c) {
-            v.push((c as u8) & 0x1f);
-        } else if ('a'..='z').contains(&c) {
-            v.push(((c as u8) & 0x1f) | 0x80);
-        } else if c == '.' {
-            v.push(0);
-        } else {
-            wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
-        }
-    }
-    Ok(())
-}
-
-// handles '?', A-Z
-fn parse_english_rack(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
-    v.clear();
-    v.reserve(s.len());
-    for c in s.chars() {
-        if ('A'..='Z').contains(&c) {
-            v.push((c as u8) & 0x1f);
-        } else if c == '?' {
-            v.push(0);
-        } else {
-            wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
-        }
-    }
-    Ok(())
-}
-*/
-
 // handles '.' and the equivalent of A-Z, a-z
 fn parse_played_tiles(
     alphabet_reader: &alphabet::AlphabetReader<'_>,
