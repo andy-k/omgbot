@@ -46,7 +46,7 @@ fn parse_english_rack(s: &str, v: &mut Vec<u8>) -> Result<(), Box<dyn std::error
 
 // handles '.' and the equivalent of A-Z, a-z
 fn parse_played_tiles(
-    alphabet_reader: &alphabet::AlphabetReader,
+    alphabet_reader: &alphabet::AlphabetReader<'_>,
     s: &str,
     v: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -72,7 +72,7 @@ fn parse_played_tiles(
 
 // handles the equivalent of '?', A-Z
 fn parse_rack(
-    alphabet_reader: &alphabet::AlphabetReader,
+    alphabet_reader: &alphabet::AlphabetReader<'_>,
     s: &str,
     v: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -104,7 +104,7 @@ struct ElucubrateArguments<
         &mut [u8],
         &macondo::GameEvent,
         Option<&kwg::Kwg>,
-        &alphabet::Alphabet,
+        &alphabet::Alphabet<'_>,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
 > {
@@ -125,7 +125,7 @@ async fn elucubrate<
         &mut [u8],
         &macondo::GameEvent,
         Option<&kwg::Kwg>,
-        &alphabet::Alphabet,
+        &alphabet::Alphabet<'_>,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
 >(
@@ -549,7 +549,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             rack_reader: std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
             play_reader: std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
         }
-        let recycled_stuffs = (|| -> Result<RecycledStuffs, Box<dyn std::error::Error>> {
+        let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
             let bot_req = std::sync::Arc::new(macondo::BotRequest::decode(&*msg.data)?);
             println!("{:?}", bot_req);
 
@@ -640,7 +640,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         |board_tiles: &mut [u8],
                          event: &macondo::GameEvent,
                          kwg: Option<&kwg::Kwg>,
-                         alphabet: &alphabet::Alphabet,
+                         alphabet: &alphabet::Alphabet<'_>,
                          is_jumbled: bool|
                          -> Result<bool, Box<dyn std::error::Error>> {
                             let board_layout = game_config.board_layout();
