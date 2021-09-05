@@ -77,11 +77,11 @@ struct ElucubrateArguments<
     game_state: game_state::GameState,
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg>,
-    game_config: &'a std::sync::Arc<Box<game_config::GameConfig<'a>>>,
+    game_config: &'a std::sync::Arc<game_config::GameConfig<'a>>,
     klv: &'a std::sync::Arc<klv::Klv>,
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
-    rack_reader: &'a std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
+    rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader<'a>>,
 }
 
 async fn elucubrate<
@@ -385,42 +385,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("norwegian.klv")?));
     //let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
     // one per supported config
-    let game_config = std::sync::Arc::new(Box::new(game_config::make_common_english_game_config()));
-    let jumbled_game_config =
-        std::sync::Arc::new(Box::new(game_config::make_jumbled_english_game_config()));
-    let french_game_config = std::sync::Arc::new(Box::new(game_config::make_french_game_config()));
+    let game_config = std::sync::Arc::new(game_config::make_common_english_game_config());
+    let jumbled_game_config = std::sync::Arc::new(game_config::make_jumbled_english_game_config());
+    let french_game_config = std::sync::Arc::new(game_config::make_french_game_config());
     let jumbled_french_game_config =
-        std::sync::Arc::new(Box::new(game_config::make_jumbled_french_game_config()));
-    let german_game_config = std::sync::Arc::new(Box::new(game_config::make_german_game_config()));
+        std::sync::Arc::new(game_config::make_jumbled_french_game_config());
+    let german_game_config = std::sync::Arc::new(game_config::make_german_game_config());
     let jumbled_german_game_config =
-        std::sync::Arc::new(Box::new(game_config::make_jumbled_german_game_config()));
-    let norwegian_game_config =
-        std::sync::Arc::new(Box::new(game_config::make_norwegian_game_config()));
+        std::sync::Arc::new(game_config::make_jumbled_german_game_config());
+    let norwegian_game_config = std::sync::Arc::new(game_config::make_norwegian_game_config());
     let jumbled_norwegian_game_config =
-        std::sync::Arc::new(Box::new(game_config::make_jumbled_norwegian_game_config()));
-    let english_rack_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_racks(game_config.alphabet()),
+        std::sync::Arc::new(game_config::make_jumbled_norwegian_game_config());
+    let english_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        game_config.alphabet(),
     ));
-    let french_rack_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_racks(french_game_config.alphabet()),
+    let french_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        french_game_config.alphabet(),
     ));
-    let german_rack_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_racks(german_game_config.alphabet()),
+    let german_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        german_game_config.alphabet(),
     ));
-    let norwergian_rack_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_racks(norwegian_game_config.alphabet()),
+    let norwergian_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        norwegian_game_config.alphabet(),
     ));
-    let english_play_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_plays(game_config.alphabet()),
+    let english_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        game_config.alphabet(),
     ));
-    let french_play_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_plays(french_game_config.alphabet()),
+    let french_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        french_game_config.alphabet(),
     ));
-    let german_play_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_plays(german_game_config.alphabet()),
+    let german_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        german_game_config.alphabet(),
     ));
-    let norwergian_play_reader = std::sync::Arc::new(Box::new(
-        alphabet::AlphabetReader::new_for_plays(norwegian_game_config.alphabet()),
+    let norwergian_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        norwegian_game_config.alphabet(),
     ));
     let lexicons = [
         ("CSW19", Language::English),
@@ -524,10 +522,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             bot_req: std::sync::Arc<macondo::BotRequest>,
             kwg: std::sync::Arc<kwg::Kwg>,
             klv: std::sync::Arc<klv::Klv>,
-            game_config: std::sync::Arc<Box<game_config::GameConfig<'a>>>,
+            game_config: std::sync::Arc<game_config::GameConfig<'a>>,
             tilter: Option<move_filter::Tilt<'a>>,
-            rack_reader: std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
-            play_reader: std::sync::Arc<Box<alphabet::AlphabetReader<'a>>>,
+            rack_reader: std::sync::Arc<alphabet::AlphabetReader<'a>>,
+            play_reader: std::sync::Arc<alphabet::AlphabetReader<'a>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
             let bot_req = std::sync::Arc::new(macondo::BotRequest::decode(&*msg.data)?);
