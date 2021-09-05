@@ -222,32 +222,48 @@ async fn elucubrate<
 
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
     println!("it is {}'s turn", my_nickname);
-    let (mut move_filter, mut move_picker, would_sleep) =
-        if my_nickname == "TiltBot1" && tilter.is_some() && !is_jumbled {
-            (
-                move_filter::GenMoves::Tilt {
-                    tilt: tilter.unwrap(),
-                    bot_level: 1,
-                },
-                move_picker::MovePicker::Hasty,
-                true,
-            )
-        } else if my_nickname == "HastyBot" || my_nickname == "malocal" {
-            (
-                move_filter::GenMoves::Unfiltered,
-                move_picker::MovePicker::Hasty,
-                false,
-            )
-        } else if my_nickname == "SimBot" && !is_jumbled {
-            (
-                move_filter::GenMoves::Unfiltered,
-                move_picker::MovePicker::Simmer(move_picker::Simmer::new(game_config, kwg, klv)),
-                false,
-            )
-        } else {
-            println!("not my move, so not responding");
+    enum OmgBotType {
+        Unfiltered,
+        Tilt(i8),
+        Sim,
+    }
+    let effective_bot_type = match bot_req.bot_type() {
+        macondo::bot_request::BotCode::HastyBot => OmgBotType::Unfiltered,
+        macondo::bot_request::BotCode::Level1CelBot => OmgBotType::Tilt(1),
+        macondo::bot_request::BotCode::Level2CelBot => OmgBotType::Tilt(2),
+        macondo::bot_request::BotCode::Level3CelBot => OmgBotType::Tilt(3),
+        macondo::bot_request::BotCode::Level4CelBot => OmgBotType::Tilt(4),
+        macondo::bot_request::BotCode::Level1Probabilistic => OmgBotType::Tilt(1),
+        macondo::bot_request::BotCode::Level2Probabilistic => OmgBotType::Tilt(2),
+        macondo::bot_request::BotCode::Level3Probabilistic => OmgBotType::Tilt(3),
+        macondo::bot_request::BotCode::Level4Probabilistic => OmgBotType::Tilt(4),
+        macondo::bot_request::BotCode::Level5Probabilistic => OmgBotType::Tilt(5),
+        macondo::bot_request::BotCode::SimmingBot => OmgBotType::Sim,
+    };
+    let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
+        OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
+            move_filter::GenMoves::Tilt {
+                tilt: tilter.unwrap(),
+                bot_level,
+            },
+            move_picker::MovePicker::Hasty,
+            true,
+        ),
+        OmgBotType::Unfiltered => (
+            move_filter::GenMoves::Unfiltered,
+            move_picker::MovePicker::Hasty,
+            false,
+        ),
+        OmgBotType::Sim if !is_jumbled => (
+            move_filter::GenMoves::Unfiltered,
+            move_picker::MovePicker::Simmer(move_picker::Simmer::new(game_config, kwg, klv)),
+            false,
+        ),
+        _ => {
+            println!("unsupported combination, so not responding");
             return Ok(None);
-        };
+        }
+    };
 
     let board_layout = game_config.board_layout();
     display::print_board(alphabet, board_layout, &game_state.board_tiles);
