@@ -57,6 +57,39 @@ fn parse_rack(
     Ok(())
 }
 
+fn each_word<F: FnMut(&[u8])>(g: &kwg::Kwg, f: F) {
+    struct Env<'a, F: FnMut(&[u8])> {
+        g: &'a kwg::Kwg,
+        v: &'a mut Vec<u8>,
+        f: F,
+    }
+    fn iter<F: FnMut(&[u8])>(env: &mut Env<'_, F>, mut p: i32) {
+        loop {
+            let t = env.g[p].tile();
+            env.v.push(t);
+            if env.g[p].accepts() {
+                (env.f)(env.v);
+            }
+            if env.g[p].arc_index() != 0 {
+                iter(env, env.g[p].arc_index());
+            }
+            env.v.pop();
+            if env.g[p].is_end() {
+                break;
+            }
+            p += 1;
+        }
+    }
+    iter(
+        &mut Env {
+            g,
+            v: &mut Vec::new(),
+            f,
+        },
+        g[0].arc_index(),
+    );
+}
+
 thread_local! {
     static RNG: std::cell::RefCell<Box<dyn RngCore>> =
         std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_entropy()));
@@ -82,6 +115,7 @@ struct ElucubrateArguments<
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader<'a>>,
+    option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
 }
 
 async fn elucubrate<
@@ -104,6 +138,7 @@ async fn elucubrate<
         mut move_generator,
         is_jumbled,
         rack_reader,
+        option_cel_kwg,
     }: ElucubrateArguments<'_, PlaceTilesType>,
 ) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
@@ -227,18 +262,18 @@ async fn elucubrate<
         Tilt(i8),
         Sim,
     }
-    let effective_bot_type = match bot_req.bot_type() {
-        macondo::bot_request::BotCode::HastyBot => OmgBotType::Unfiltered,
-        macondo::bot_request::BotCode::Level1CelBot => OmgBotType::Tilt(1),
-        macondo::bot_request::BotCode::Level2CelBot => OmgBotType::Tilt(2),
-        macondo::bot_request::BotCode::Level3CelBot => OmgBotType::Tilt(3),
-        macondo::bot_request::BotCode::Level4CelBot => OmgBotType::Tilt(4),
-        macondo::bot_request::BotCode::Level1Probabilistic => OmgBotType::Tilt(1),
-        macondo::bot_request::BotCode::Level2Probabilistic => OmgBotType::Tilt(2),
-        macondo::bot_request::BotCode::Level3Probabilistic => OmgBotType::Tilt(3),
-        macondo::bot_request::BotCode::Level4Probabilistic => OmgBotType::Tilt(4),
-        macondo::bot_request::BotCode::Level5Probabilistic => OmgBotType::Tilt(5),
-        macondo::bot_request::BotCode::SimmingBot => OmgBotType::Sim,
+    let (use_cel, effective_bot_type) = match bot_req.bot_type() {
+        macondo::bot_request::BotCode::HastyBot => (false, OmgBotType::Unfiltered),
+        macondo::bot_request::BotCode::Level1CelBot => (true, OmgBotType::Tilt(1)),
+        macondo::bot_request::BotCode::Level2CelBot => (true, OmgBotType::Tilt(2)),
+        macondo::bot_request::BotCode::Level3CelBot => (true, OmgBotType::Tilt(3)),
+        macondo::bot_request::BotCode::Level4CelBot => (true, OmgBotType::Tilt(4)),
+        macondo::bot_request::BotCode::Level1Probabilistic => (false, OmgBotType::Tilt(1)),
+        macondo::bot_request::BotCode::Level2Probabilistic => (false, OmgBotType::Tilt(2)),
+        macondo::bot_request::BotCode::Level3Probabilistic => (false, OmgBotType::Tilt(3)),
+        macondo::bot_request::BotCode::Level4Probabilistic => (false, OmgBotType::Tilt(4)),
+        macondo::bot_request::BotCode::Level5Probabilistic => (false, OmgBotType::Tilt(5)),
+        macondo::bot_request::BotCode::SimmingBot => (false, OmgBotType::Sim),
     };
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
         OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
@@ -263,6 +298,15 @@ async fn elucubrate<
             println!("unsupported combination, so not responding");
             return Ok(None);
         }
+    };
+    let used_kwg = if use_cel {
+        if option_cel_kwg.is_none() {
+            println!("cel unavailable, so not responding");
+            return Ok(None);
+        }
+        &option_cel_kwg.as_ref().unwrap()
+    } else {
+        kwg
     };
 
     let board_layout = game_config.board_layout();
@@ -289,7 +333,7 @@ async fn elucubrate<
     let board_snapshot = &movegen::BoardSnapshot {
         board_tiles: &game_state.board_tiles,
         game_config,
-        kwg,
+        kwg: used_kwg,
         klv,
     };
 
@@ -512,6 +556,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
+    let mut cel_kwgs = std::collections::HashMap::new();
+    if let Some(ecwl_kwg) = kwgs.get("ECWL") {
+        let mut v1 = Vec::<bites::Bites>::new();
+        each_word(ecwl_kwg, |w| v1.push(w.into()));
+        let mut v2 = Vec::<bites::Bites>::new();
+        for (lexicon, language) in lexicons.iter() {
+            if *lexicon != "ECWL" && matches!(language, Language::English) {
+                v2.clear();
+                let mut v1p = 0;
+                each_word(kwgs.get(*lexicon).unwrap(), |w| {
+                    while v1p < v1.len() {
+                        match v1[v1p][..].cmp(w) {
+                            std::cmp::Ordering::Greater => break,
+                            std::cmp::Ordering::Less => v1p += 1,
+                            std::cmp::Ordering::Equal => {
+                                v2.push(w.into());
+                                v1p += 1;
+                                break;
+                            }
+                        }
+                    }
+                });
+                cel_kwgs.insert(
+                    lexicon.to_string(),
+                    std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&build::build(
+                        build::BuildFormat::Gaddawg,
+                        &v2,
+                    )?)),
+                );
+            }
+        }
+    }
 
     let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
     let sub = nc.subscribe("macondo.bot").await?;
@@ -526,6 +602,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tilter: Option<move_filter::Tilt<'a>>,
             rack_reader: std::sync::Arc<alphabet::AlphabetReader<'a>>,
             play_reader: std::sync::Arc<alphabet::AlphabetReader<'a>>,
+            option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
             let bot_req = Box::new(macondo::BotRequest::decode(&*msg.data)?);
@@ -569,6 +646,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let play_reader = play_readers
                 .get(&game_history.lexicon)
                 .ok_or("not familiar with the lexicon")?;
+            let option_cel_kwg = cel_kwgs.get(&game_history.lexicon);
 
             Ok(RecycledStuffs {
                 bot_req,
@@ -578,6 +656,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tilter: tilter.cloned(),
                 rack_reader: std::sync::Arc::clone(rack_reader),
                 play_reader: std::sync::Arc::clone(play_reader),
+                option_cel_kwg: option_cel_kwg.cloned(),
             })
         })();
         match recycled_stuffs {
@@ -602,6 +681,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tilter,
                 rack_reader,
                 play_reader,
+                option_cel_kwg,
             }) => {
                 tokio::spawn(async move {
                     let game_state = game_state::GameState::new(&game_config);
@@ -772,6 +852,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             move_generator,
                             is_jumbled,
                             rack_reader: &rack_reader,
+                            option_cel_kwg,
                         })
                         .await;
 
