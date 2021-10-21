@@ -2,7 +2,7 @@
 name = "omgbot"
 version = "0.1.0"
 authors = ["Andy Kurnia"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 resolver = "2"
 
