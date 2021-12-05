@@ -465,6 +465,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         norwegian_game_config.alphabet(),
     ));
     let lexicons = [
+        ("CSW21", Language::English),
         ("CSW19", Language::English),
         ("CSW19X", Language::English),
         ("ECWL", Language::English),
