@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2021 Andy Kurnia.
+// Copyright (C) 2020-2022 Andy Kurnia.
 
 pub mod macondo {
     include!(concat!(env!("OUT_DIR"), "/macondo.rs"));

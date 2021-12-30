@@ -6,7 +6,7 @@ platform using Kurnia algorithm and data structures.
 
 LICENSE
 
-Copyright (C) 2020-2021 Andy Kurnia.
+Copyright (C) 2020-2022 Andy Kurnia.
 Released under the MIT license.
 
 Bugs included.
