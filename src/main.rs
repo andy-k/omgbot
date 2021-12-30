@@ -304,7 +304,7 @@ async fn elucubrate<
             println!("cel unavailable, so not responding");
             return Ok(None);
         }
-        &option_cel_kwg.as_ref().unwrap()
+        option_cel_kwg.as_ref().unwrap()
     } else {
         kwg
     };
