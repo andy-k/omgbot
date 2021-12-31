@@ -723,7 +723,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 ),
                             };
                             parse_played_tiles(&play_reader, &event.played_tiles, &mut place_tiles_buf)?;
-                            if !place_tiles_buf.iter().any(|&t| t != 0) {
+                            // note: not checking if first move covers star or if it connects
+                            if place_tiles_buf.len() < 2 || !place_tiles_buf.iter().any(|&t| t != 0) {
                                 wolges::return_error!("not enough tiles played".into());
                             }
                             if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
@@ -746,7 +747,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 if tile == 0 {
                                     if board_tiles[j] == 0 {
                                         wolges::return_error!(
-                                            "played-through tile not omitted".into()
+                                            "playing through vacant board".into()
                                         );
                                     }
                                 } else if board_tiles[j] != 0 {
