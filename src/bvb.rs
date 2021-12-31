@@ -196,9 +196,9 @@ fn show_all(client: &reqwest::blocking::Client, url: &str, gameid: &str) -> erro
 }
 
 fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Returns<()> {
-    let mut total_win = 0.0;
-    let mut total_loss = 0.0;
-    let mut total_spread = 0;
+    let mut total_win = 0.0f64;
+    let mut total_loss = 0.0f64;
+    let mut total_spread = 0i64;
     for game_num in 1..=num_games {
         let klv = klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?);
         let game_config = game_config::make_common_english_game_config();
@@ -464,7 +464,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                 let this_spread = score0 - score1;
                 total_win += this_win;
                 total_loss += this_loss;
-                total_spread += this_spread;
+                total_spread += this_spread as i64;
                 info!(
                     "Result: Game {}: {}-{} ({}-{} {}), Total: {}-{} {}",
                     game_num,
