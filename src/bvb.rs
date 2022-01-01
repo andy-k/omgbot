@@ -336,16 +336,6 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
 
             info!("waitTurn\n{}", events);
 
-            let gcg = check_ok(
-                client
-                    .post(format!("{}/games/{}/waitTurn", url, gameid))
-                    .basic_auth(userid, None::<&str>)
-                    .header(reqwest::header::ACCEPT, "application/gcg")
-                    .send()?,
-            )?
-            .text()?;
-            info!("waitTurn.gcg\n{}", gcg);
-
             let mut event_lines = events.lines().collect::<Vec<_>>();
             let last_line = event_lines.pop().ok_or("no lines")?;
             let (is_ongoing, my_score, your_score) = {
@@ -373,6 +363,24 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                     _ => return Err(format!("bad last line {:?}", last_line).into()),
                 }
             };
+
+            // note: this game only counts if neither player gets -1.
+            // when someone times out their score becomes -1 and the game is already deleted.
+            let this_game_counts =
+                game_state.players[0].score >= 0 && game_state.players[1].score >= 0;
+
+            if this_game_counts {
+                // this would 404 in the -1 case.
+                let gcg = check_ok(
+                    client
+                        .post(format!("{}/games/{}/waitTurn", url, gameid))
+                        .basic_auth(userid, None::<&str>)
+                        .header(reqwest::header::ACCEPT, "application/gcg")
+                        .send()?,
+                )?
+                .text()?;
+                info!("waitTurn.gcg\n{}", gcg);
+            }
 
             let mut should_challenge = false;
             {
@@ -474,8 +482,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                     std::cmp::Ordering::Equal => (0.5, 0.5),
                 };
                 let this_spread = score0 - score1;
-                // note: this game.
-                if score0 >= 0 && score1 >= 0 {
+                if this_game_counts {
                     total_win += this_win;
                     total_loss += this_loss;
                     total_spread += this_spread as i64;
