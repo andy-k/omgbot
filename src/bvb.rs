@@ -199,7 +199,8 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
     let mut total_win = 0.0f64;
     let mut total_loss = 0.0f64;
     let mut total_spread = 0i64;
-    for game_num in 1..=num_games {
+    let mut num_completed = 0usize;
+    while num_completed < num_games {
         let klv = klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?);
         let game_config = game_config::make_common_english_game_config();
         let dim = game_config.board_layout().dim();
@@ -473,21 +474,38 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                     std::cmp::Ordering::Equal => (0.5, 0.5),
                 };
                 let this_spread = score0 - score1;
-                total_win += this_win;
-                total_loss += this_loss;
-                total_spread += this_spread as i64;
-                info!(
-                    "Result: Game {}: {}-{} ({}-{} {}), Total: {}-{} {}",
-                    game_num,
-                    score0,
-                    score1,
-                    this_win,
-                    this_loss,
-                    this_spread,
-                    total_win,
-                    total_loss,
-                    total_spread
-                );
+                // note: this game.
+                if score0 >= 0 && score1 >= 0 {
+                    total_win += this_win;
+                    total_loss += this_loss;
+                    total_spread += this_spread as i64;
+                    num_completed += 1;
+                    info!(
+                        "Result: Game {}: {}-{} ({}-{} {}), Total: {}-{} {}",
+                        num_completed,
+                        score0,
+                        score1,
+                        this_win,
+                        this_loss,
+                        this_spread,
+                        total_win,
+                        total_loss,
+                        total_spread
+                    );
+                } else {
+                    info!(
+                        "Result: Invalid Game: {}-{} ({}-{} {}), Not Updated Total (from {} games): {}-{} {}",
+                        score0,
+                        score1,
+                        this_win,
+                        this_loss,
+                        this_spread,
+                        num_completed,
+                        total_win,
+                        total_loss,
+                        total_spread
+                    );
+                }
                 break;
             }
 
