@@ -564,7 +564,8 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                     .basic_auth(userid, None::<&str>)
                     .body(move_to_send_buf.clone())
                     .send()?,
-            )?;
+            )?
+            .text()?;
         }
 
         check_ok(
@@ -572,7 +573,8 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                 .delete(format!("{}/games/{}", url, gameid))
                 .basic_auth(userid, None::<&str>)
                 .send()?,
-        )?;
+        )?
+        .text()?;
         info!("game {} deleted", gameid);
     }
     info!(
