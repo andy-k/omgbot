@@ -304,6 +304,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
         let gameid = check_ok(
             client
                 .post(format!("{}/games", url))
+                .basic_auth(userid, None::<&str>)
                 .body(gametag.to_string())
                 .send()?,
         )?
