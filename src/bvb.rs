@@ -568,14 +568,25 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
             .text()?;
         }
 
-        check_ok(
-            client
+        // delete, this is allowed to fail
+        {
+            let resp = client
                 .delete(format!("{}/games/{}", url, gameid))
                 .basic_auth(userid, None::<&str>)
-                .send()?,
-        )?
-        .text()?;
-        info!("game {} deleted", gameid);
+                .send()?;
+            let status = resp.status();
+            if status.is_success() {
+                resp.text()?;
+                info!("game {} deleted", gameid);
+            } else {
+                warn!(
+                    "game {} not deleted: {:?}: {}",
+                    gameid,
+                    status,
+                    resp.text()?
+                );
+            }
+        }
     }
     info!(
         "Final Result: After Game {}: Total: {}-{} {}",
