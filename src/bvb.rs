@@ -335,6 +335,16 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
 
             info!("waitTurn\n{}", events);
 
+            let gcg = check_ok(
+                client
+                    .post(format!("{}/games/{}/waitTurn", url, gameid))
+                    .basic_auth(userid, None::<&str>)
+                    .header(reqwest::header::ACCEPT, "application/gcg")
+                    .send()?,
+            )?
+            .text()?;
+            info!("waitTurn.gcg\n{}", gcg);
+
             let mut event_lines = events.lines().collect::<Vec<_>>();
             let last_line = event_lines.pop().ok_or("no lines")?;
             let (is_ongoing, my_score, your_score) = {
