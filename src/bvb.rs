@@ -366,8 +366,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
 
             // note: this game only counts if neither player gets -1.
             // when someone times out their score becomes -1 and the game is already deleted.
-            let this_game_counts =
-                game_state.players[0].score >= 0 && game_state.players[1].score >= 0;
+            let this_game_counts = my_score >= 0 && your_score >= 0;
 
             if this_game_counts {
                 // this would 404 in the -1 case.
