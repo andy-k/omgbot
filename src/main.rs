@@ -431,6 +431,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // one per supported config
     let game_config = std::sync::Arc::new(game_config::make_common_english_game_config());
     let jumbled_game_config = std::sync::Arc::new(game_config::make_jumbled_english_game_config());
+    let super_game_config = std::sync::Arc::new(game_config::make_super_english_game_config());
+    let jumbled_super_game_config =
+        std::sync::Arc::new(game_config::make_jumbled_super_english_game_config());
     let french_game_config = std::sync::Arc::new(game_config::make_french_game_config());
     let jumbled_french_game_config =
         std::sync::Arc::new(game_config::make_jumbled_french_game_config());
@@ -478,6 +481,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     let mut game_configs = std::collections::HashMap::new();
     let mut jumbled_game_configs = std::collections::HashMap::new();
+    let mut super_game_configs = std::collections::HashMap::new();
+    let mut jumbled_super_game_configs = std::collections::HashMap::new();
     let mut klvs = std::collections::HashMap::new();
     let mut kwgs = std::collections::HashMap::new();
     let mut tilters = std::collections::HashMap::new();
@@ -503,6 +508,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Language::Norwegian => jumbled_norwegian_game_config.clone(),
             },
         );
+        if let Language::English = language {
+            super_game_configs.insert(lexicon.to_string(), super_game_config.clone());
+            jumbled_super_game_configs
+                .insert(lexicon.to_string(), jumbled_super_game_config.clone());
+        }
         klvs.insert(
             lexicon.to_string(),
             match language {
@@ -616,11 +626,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 wolges::return_error!("only supports two-player games".into());
             }
 
-            let is_jumbled = game_history.variant == "wordsmog";
+            let (is_jumbled, is_super) = match &*game_history.variant {
+                "wordsmog" => (true, false),
+                "classic_super" => (false, true),
+                "wordsmog_super" => (true, true),
+                _ => (false, false),
+            };
             // todo: transpose these?
-            let game_config = match is_jumbled {
-                true => &jumbled_game_configs,
-                false => &game_configs,
+            let game_config = match (is_jumbled, is_super) {
+                (true, false) => &jumbled_game_configs,
+                (false, true) => &super_game_configs,
+                (true, true) => &jumbled_super_game_configs,
+                (false, false) => &game_configs,
             }
             .get(&game_history.lexicon)
             .ok_or("not familiar with the lexicon")?;
