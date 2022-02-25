@@ -95,6 +95,19 @@ thread_local! {
         std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_entropy()));
 }
 
+#[allow(deprecated)]
+#[inline(always)]
+fn determine_player_index(
+    event: &macondo::GameEvent,
+    game_history: &macondo::GameHistory,
+) -> usize {
+    if event.nickname.is_empty() {
+        event.player_index as usize
+    } else {
+        (event.nickname != game_history.players[0].nickname) as usize
+    }
+}
+
 struct ElucubrateArguments<
     'a,
     PlaceTilesType: FnMut(
@@ -151,7 +164,7 @@ async fn elucubrate<
         if event.cumulative as i16 as i32 != event.cumulative {
             wolges::return_error!(format!("unsupported score {}", event.cumulative));
         }
-        game_state.players[(event.nickname != game_history.players[0].nickname) as usize].score =
+        game_state.players[determine_player_index(event, game_history)].score =
             event.cumulative as i16;
         match event.r#type() {
             macondo::game_event::Type::PhonyTilesReturned => {
@@ -248,7 +261,7 @@ async fn elucubrate<
     // event does not have user_id so nickname is the best we can do.
     game_state.turn = match game_history.events.last() {
         None => game_history.second_went_first as u8,
-        Some(event) => (event.nickname == game_history.players[0].nickname) as u8,
+        Some(event) => (determine_player_index(event, game_history) ^ 1) as u8,
     };
     let pass_or_challenge = game_state.bag.0.is_empty()
         && game_state.players[game_state.turn as usize ^ 1]
