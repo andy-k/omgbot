@@ -116,9 +116,9 @@ fn parse_played_tiles(
 #[inline(always)]
 fn from_lowercase_rack<'a>(alphabet: &alphabet::Alphabet<'a>, idx: u8) -> Option<&'a str> {
     if idx == 0 {
-        alphabet.from_rack(idx)
+        alphabet.of_rack(idx)
     } else if idx & 0x80 == 0 {
-        alphabet.from_board(idx | 0x80)
+        alphabet.of_board(idx | 0x80)
     } else {
         None
     }
@@ -544,7 +544,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                             move_to_send_buf.push_str("p:");
                             for &tile in tiles.iter() {
                                 //move_to_send_buf.push_str(from_lowercase_rack(alphabet, tile).unwrap());
-                                move_to_send_buf.push_str(alphabet.from_rack(tile).unwrap());
+                                move_to_send_buf.push_str(alphabet.of_rack(tile).unwrap());
                             }
                         }
                     }
@@ -564,7 +564,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                             if tile == 0 {
                                 move_to_send_buf.push('.');
                             } else {
-                                move_to_send_buf.push_str(alphabet.from_board(tile).unwrap());
+                                move_to_send_buf.push_str(alphabet.of_board(tile).unwrap());
                             }
                         }
                     }

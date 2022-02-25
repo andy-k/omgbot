@@ -415,7 +415,7 @@ async fn elucubrate<
                 if shown_tile == 0 {
                     shown_tile = game_state.board_tiles[strider.at(i)];
                 }
-                s.push_str(alphabet.from_board(shown_tile).unwrap());
+                s.push_str(alphabet.of_board(shown_tile).unwrap());
             }
 
             game_event.played_tiles = s;
