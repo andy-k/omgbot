@@ -4,6 +4,7 @@ pub mod macondo {
     include!(concat!(env!("OUT_DIR"), "/macondo.rs"));
 }
 
+use futures_util::StreamExt;
 use prost::Message;
 use rand::prelude::*;
 use wolges::*;
@@ -614,7 +615,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
-    let sub = nc.subscribe("macondo.bot").await?;
+    let mut sub = nc.subscribe("macondo.bot".to_string()).await?;
     println!("ready");
     while let Some(msg) = sub.next().await {
         let msg_received_instant = std::time::Instant::now();
@@ -629,7 +630,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
-            let bot_req = Box::new(macondo::BotRequest::decode(&*msg.data)?);
+            let bot_req = Box::new(macondo::BotRequest::decode(&*msg.payload)?);
             println!("{:?}", bot_req);
 
             let game_history = bot_req.game_history.as_ref().ok_or("need a game history")?;
@@ -702,7 +703,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     bot_resp.encode(&mut buf)?;
                     println!("{:?}", buf);
                 }
-                msg.respond(&buf).await?;
+                nc.publish(msg.reply.unwrap(), buf.into()).await.unwrap();
             }
             Ok(RecycledStuffs {
                 bot_req,
@@ -714,6 +715,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 play_reader,
                 option_cel_kwg,
             }) => {
+                let nc = std::sync::Arc::clone(&nc);
                 tokio::spawn(async move {
                     let game_state = game_state::GameState::new(&game_config);
                     let move_generator = movegen::KurniaMoveGenerator::new(&game_config);
@@ -922,7 +924,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("sending response immediately");
                         }
 
-                        msg.respond(&buf).await.unwrap();
+                        nc.publish(msg.reply.unwrap(), buf.into()).await.unwrap();
                     }
                 });
             }
