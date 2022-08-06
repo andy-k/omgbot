@@ -132,6 +132,12 @@ struct ElucubrateArguments<
     option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
 }
 
+#[allow(deprecated)]
+#[inline(always)]
+fn deprecated_second_went_first(game_history: &macondo::GameHistory) -> bool {
+    game_history.second_went_first
+}
+
 async fn elucubrate<
     PlaceTilesType: FnMut(
         &mut [u8],
@@ -261,7 +267,7 @@ async fn elucubrate<
     // if player[x] made the last event, it is player[x ^ 1]'s turn.
     // event does not have user_id so nickname is the best we can do.
     game_state.turn = match game_history.events.last() {
-        None => game_history.second_went_first as u8,
+        None => deprecated_second_went_first(game_history) as u8,
         Some(event) => (determine_player_index(event, game_history) ^ 1) as u8,
     };
     let pass_or_challenge = game_state.bag.0.is_empty()
