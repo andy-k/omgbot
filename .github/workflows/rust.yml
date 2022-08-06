@@ -25,6 +25,8 @@ jobs:
       run: ln -s ../macondo/api/proto/macondo/macondo.proto src
     - name: Install Protoc
       uses: arduino/setup-protoc@v1
+      with:
+        repo-token: "${{ secrets.GITHUB_TOKEN }}"
     - name: Version
       run: cargo version
     - name: Clippy
