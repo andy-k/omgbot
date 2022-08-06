@@ -23,6 +23,8 @@ jobs:
         path: macondo
     - name: Link proto
       run: ln -s ../macondo/api/proto/macondo/macondo.proto src
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v1
     - name: Version
       run: cargo version
     - name: Clippy
