@@ -443,6 +443,7 @@ enum Language {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let english_klv =
         std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?));
+    let csw21_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("CSW21.klv")?));
     let french_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("french.klv")?));
     let german_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read("german.klv")?));
     let norwegian_klv =
@@ -535,11 +536,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         klvs.insert(
             lexicon.to_string(),
-            match language {
-                Language::English => english_klv.clone(),
-                Language::French => french_klv.clone(),
-                Language::German => german_klv.clone(),
-                Language::Norwegian => norwegian_klv.clone(),
+            match *lexicon {
+                "CSW21" => csw21_klv.clone(),
+                _ => match language {
+                    Language::English => english_klv.clone(),
+                    Language::French => french_klv.clone(),
+                    Language::German => german_klv.clone(),
+                    Language::Norwegian => norwegian_klv.clone(),
+                },
             },
         );
         match std::fs::read(format!("{}.kwg", lexicon)) {
