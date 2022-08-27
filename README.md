@@ -26,4 +26,4 @@ cargo run --release
 
 ## GitHub Badge
 
-- [![Rust](https://github.com/andy-k/omgbot/actions/workflows/rust.yml/badge.svg)](https://github.com/andy-k/omgbot/actions/workflows/rust.yml)
+- [![Actions](https://github.com/andy-k/omgbot/actions/workflows/actions.yml/badge.svg)](https://github.com/andy-k/omgbot/actions/workflows/actions.yml)
