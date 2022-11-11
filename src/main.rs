@@ -821,10 +821,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     if tile != 0 {
                                         let perpendicular_strider = match event.direction() {
                                             macondo::game_event::Direction::Vertical => {
-                                                dim.across(i as i8)
+                                                dim.across(i)
                                             }
                                             macondo::game_event::Direction::Horizontal => {
-                                                dim.down(i as i8)
+                                                dim.down(i)
                                             }
                                         };
                                         let mut j = lane;
