@@ -622,14 +622,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let alloc_reply_chan = |game_id| format!("bot.publish_event.{game_id}");
     let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
     let mut sub = nc
-        .subscribe("macondo.bot".to_string())
+        .queue_subscribe("bot.commands".to_string(), "bot_queue".to_string())
         .await
         .map_err(|e| e as Box<dyn std::error::Error>)?;
     println!("ready");
     while let Some(msg) = sub.next().await {
         let msg_received_instant = std::time::Instant::now();
+        let bot_req = macondo::BotRequest::decode(&*msg.payload);
+        // allocates a clone.
+        let option_game_id = bot_req
+            .as_ref()
+            .ok()
+            .and_then(|bot_req| bot_req.game_history.as_ref())
+            .map(|game_history| game_history.uid.clone());
         struct RecycledStuffs<'a> {
             bot_req: Box<macondo::BotRequest>,
             kwg: std::sync::Arc<kwg::Kwg>,
@@ -641,7 +649,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
-            let bot_req = Box::new(macondo::BotRequest::decode(&*msg.payload)?);
+            let bot_req = Box::new(bot_req?);
             println!("{bot_req:?}");
 
             let game_history = bot_req.game_history.as_ref().ok_or("need a game history")?;
@@ -708,13 +716,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     let bot_resp = macondo::BotResponse {
                         response: Some(macondo::bot_response::Response::Error(err.to_string())),
+                        game_id: option_game_id.clone().unwrap_or("".to_string()), // does not seem to be used by liwords
                         ..Default::default()
                     };
                     println!("{bot_resp:?}");
                     bot_resp.encode(&mut buf)?;
                     println!("{buf:?}");
                 }
-                nc.publish(msg.reply.unwrap(), buf.into()).await.unwrap();
+                if let Some(game_id) = option_game_id {
+                    nc.publish(alloc_reply_chan(game_id), buf.into())
+                        .await
+                        .unwrap();
+                }
             }
             Ok(RecycledStuffs {
                 bot_req,
@@ -913,6 +926,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 Err(err) => macondo::bot_response::Response::Error(err.to_string()),
                             }),
+                            game_id: option_game_id.clone().unwrap_or("".to_string()), // does not seem to be used by liwords
                             ..Default::default()
                         };
                         if should_reply {
@@ -935,7 +949,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("sending response immediately");
                         }
 
-                        nc.publish(msg.reply.unwrap(), buf.into()).await.unwrap();
+                        if let Some(game_id) = option_game_id {
+                            nc.publish(alloc_reply_chan(game_id), buf.into())
+                                .await
+                                .unwrap();
+                        }
                     }
                 });
             }
