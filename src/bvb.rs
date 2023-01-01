@@ -104,7 +104,7 @@ fn parse_played_tiles(
                 v.push(0);
                 ix += 1;
             } else {
-                wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+                wolges::return_error!(format!("invalid tile after {v:?} in {s:?}"));
             }
         }
     }
@@ -153,7 +153,7 @@ fn parse_rack(
                 v.push(tile);
                 ix = end_ix;
             } else {
-                wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+                wolges::return_error!(format!("invalid tile after {v:?} in {s:?}"));
             }
         }
     }
@@ -166,8 +166,8 @@ fn check_ok(resp: reqwest::blocking::Response) -> error::Returns<reqwest::blocki
         Ok(resp)
     } else {
         match resp.text() {
-            Ok(t) => Err(format!("{:?}: {}", status, t).into()),
-            Err(e) => Err(format!("{:?}: {}", status, e).into()),
+            Ok(t) => Err(format!("{status:?}: {t}").into()),
+            Err(e) => Err(format!("{status:?}: {e}").into()),
         }
     }
 }
@@ -178,12 +178,7 @@ fn do_get(
     gameid: &str,
     query: &str,
 ) -> error::Returns<()> {
-    let txt = check_ok(
-        client
-            .get(format!("{}/games/{}/{}", url, gameid, query))
-            .send()?,
-    )?
-    .text()?;
+    let txt = check_ok(client.get(format!("{url}/games/{gameid}/{query}")).send()?)?.text()?;
     info!("{}\n{}", query, txt);
     Ok(())
 }
@@ -225,11 +220,10 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
          -> Result<bool, Box<dyn std::error::Error>> {
             // event is of the format 9I:SO.UwU
 
-            let (coord_token, played_tiles_token) = event
-                .split_once(':')
-                .ok_or(format!("no : in {:?}", event))?;
-            let coord = parse_coord_token(coord_token, dim)
-                .ok_or(format!("invalid coord in {:?}", event))?;
+            let (coord_token, played_tiles_token) =
+                event.split_once(':').ok_or(format!("no : in {event:?}"))?;
+            let coord =
+                parse_coord_token(coord_token, dim).ok_or(format!("invalid coord in {event:?}"))?;
             let (strider, lane, idx) = (dim.lane(coord.down, coord.lane), coord.lane, coord.idx);
             parse_played_tiles(&play_reader, played_tiles_token, &mut place_tiles_buf)?;
             // note: not checking if first move covers star or if it connects
@@ -305,7 +299,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
 
         let gameid = check_ok(
             client
-                .post(format!("{}/games", url))
+                .post(format!("{url}/games"))
                 .basic_auth(userid, None::<&str>)
                 .body(gametag.to_string())
                 .send()?,
@@ -325,7 +319,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
 
             let events = check_ok(
                 client
-                    .post(format!("{}/games/{}/waitTurn", url, gameid))
+                    .post(format!("{url}/games/{gameid}/waitTurn"))
                     .basic_auth(userid, None::<&str>)
                     .send()?,
             )?
@@ -361,7 +355,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                         rack.clear();
                         (false, score0, score1)
                     }
-                    _ => return Err(format!("bad last line {:?}", last_line).into()),
+                    _ => return Err(format!("bad last line {last_line:?}").into()),
                 }
             };
 
@@ -373,7 +367,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                 // this would 404 in the -1 case.
                 let gcg = check_ok(
                     client
-                        .post(format!("{}/games/{}/waitTurn", url, gameid))
+                        .post(format!("{url}/games/{gameid}/waitTurn"))
                         .basic_auth(userid, None::<&str>)
                         .header(reqwest::header::ACCEPT, "application/gcg")
                         .send()?,
@@ -428,8 +422,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
             for &tile in &rack {
                 if tile > alphabet_len_without_blank {
                     wolges::return_error!(format!(
-                        "rack has invalid tile {}, alphabet size is {}",
-                        tile, alphabet_len_without_blank
+                        "rack has invalid tile {tile}, alphabet size is {alphabet_len_without_blank}"
                     ));
                 }
                 if available_tally_buf[tile as usize] > 0 {
@@ -585,7 +578,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
 
             check_ok(
                 client
-                    .post(format!("{}/games/{}/makePlay", url, gameid))
+                    .post(format!("{url}/games/{gameid}/makePlay"))
                     .basic_auth(userid, None::<&str>)
                     .body(move_to_send_buf.clone())
                     .send()?,
@@ -596,7 +589,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
         // delete, this is allowed to fail
         {
             let resp = client
-                .delete(format!("{}/games/{}", url, gameid))
+                .delete(format!("{url}/games/{gameid}"))
                 .basic_auth(userid, None::<&str>)
                 .send()?;
             let status = resp.status();

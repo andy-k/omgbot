@@ -29,7 +29,7 @@ fn parse_played_tiles(
                 v.push(0);
                 ix += 1;
             } else {
-                wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+                wolges::return_error!(format!("invalid tile after {v:?} in {s:?}"));
             }
         }
     }
@@ -52,7 +52,7 @@ fn parse_rack(
                 v.push(tile);
                 ix = end_ix;
             } else {
-                wolges::return_error!(format!("invalid tile after {:?} in {:?}", v, s));
+                wolges::return_error!(format!("invalid tile after {v:?} in {s:?}"));
             }
         }
     }
@@ -225,16 +225,13 @@ async fn elucubrate<
             rack,
         )?;
         if rack.len() > game_config.rack_size() as usize {
-            wolges::return_error!(format!("rack of p{} is too long", player_idx));
+            wolges::return_error!(format!("rack of p{player_idx} is too long"));
         }
         for &tile in rack.iter() {
             if available_tally_buf[tile as usize] > 0 {
                 available_tally_buf[tile as usize] -= 1;
             } else {
-                wolges::return_error!(format!(
-                    "rack of p{} has too many of tile {}",
-                    player_idx, tile
-                ));
+                wolges::return_error!(format!("rack of p{player_idx} has too many of tile {tile}"));
             }
         }
     }
@@ -244,7 +241,7 @@ async fn elucubrate<
             if available_tally_buf[tile as usize] > 0 {
                 available_tally_buf[tile as usize] -= 1;
             } else {
-                wolges::return_error!(format!("board has too many of tile {}", tile));
+                wolges::return_error!(format!("board has too many of tile {tile}"));
             }
         }
     }
@@ -277,7 +274,7 @@ async fn elucubrate<
             .is_empty();
 
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
-    println!("it is {}'s turn", my_nickname);
+    println!("it is {my_nickname}'s turn");
     enum OmgBotType {
         Unfiltered,
         Tilt(i8),
@@ -547,7 +544,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             },
         );
-        match std::fs::read(format!("{}.kwg", lexicon)) {
+        match std::fs::read(format!("{lexicon}.kwg")) {
             Ok(kwg_bytes) => {
                 let kwg_arc = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kwg_bytes));
                 tilters.insert(
@@ -561,16 +558,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kwgs.insert(lexicon.to_string(), kwg_arc);
             }
             Err(err) => {
-                eprintln!("warning: {}.kwg: {}", lexicon, err);
+                eprintln!("warning: {lexicon}.kwg: {err}");
             }
         }
-        match std::fs::read(format!("{}.kad", lexicon)) {
+        match std::fs::read(format!("{lexicon}.kad")) {
             Ok(kad_bytes) => {
                 let kad_arc = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kad_bytes));
                 kads.insert(lexicon.to_string(), kad_arc);
             }
             Err(err) => {
-                eprintln!("warning: {}.kad: {}", lexicon, err);
+                eprintln!("warning: {lexicon}.kad: {err}");
             }
         }
         rack_readers.insert(
@@ -645,7 +642,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
             let bot_req = Box::new(macondo::BotRequest::decode(&*msg.payload)?);
-            println!("{:?}", bot_req);
+            println!("{bot_req:?}");
 
             let game_history = bot_req.game_history.as_ref().ok_or("need a game history")?;
             if game_history.players.len() != 2
@@ -713,9 +710,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         response: Some(macondo::bot_response::Response::Error(err.to_string())),
                         ..Default::default()
                     };
-                    println!("{:?}", bot_resp);
+                    println!("{bot_resp:?}");
                     bot_resp.encode(&mut buf)?;
-                    println!("{:?}", buf);
+                    println!("{buf:?}");
                 }
                 nc.publish(msg.reply.unwrap(), buf.into()).await.unwrap();
             }
@@ -919,9 +916,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ..Default::default()
                         };
                         if should_reply {
-                            println!("{:?}", bot_resp);
+                            println!("{bot_resp:?}");
                             bot_resp.encode(&mut buf).unwrap();
-                            println!("{:?}", buf);
+                            println!("{buf:?}");
                         }
                     }
                     if should_reply {
@@ -930,7 +927,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 RNG.with(|rng| rng.borrow_mut().gen_range(2000..=4000));
                             let elapsed_ms = msg_received_instant.elapsed().as_millis();
                             let sleep_for_ms = time_for_move_ms.saturating_sub(elapsed_ms) as u64;
-                            println!("sleeping for {}ms", sleep_for_ms);
+                            println!("sleeping for {sleep_for_ms}ms");
                             tokio::time::sleep(tokio::time::Duration::from_millis(sleep_for_ms))
                                 .await;
                             println!("sending response");
