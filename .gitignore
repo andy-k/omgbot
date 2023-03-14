@@ -2,4 +2,5 @@
 macondo.proto
 *.kwg
 *.klv
+*.klv2
 *.kad

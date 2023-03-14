@@ -196,7 +196,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
     let mut total_spread = 0i64;
     let mut num_completed = 0usize;
     while num_completed < num_games {
-        // for nostalgic reasons, this uses CSW21.kwg with english.klv
+        // for nostalgic reasons, this uses CSW21.kwg with v1 english.klv
         let klv = klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?);
         let game_config = game_config::make_common_english_game_config();
         let dim = game_config.board_layout().dim();
