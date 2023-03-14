@@ -291,7 +291,11 @@ async fn elucubrate<
         macondo::bot_request::BotCode::Level3Probabilistic => (false, OmgBotType::Tilt(3)),
         macondo::bot_request::BotCode::Level4Probabilistic => (false, OmgBotType::Tilt(4)),
         macondo::bot_request::BotCode::Level5Probabilistic => (false, OmgBotType::Tilt(5)),
+        macondo::bot_request::BotCode::NoLeaveBot => (false, OmgBotType::Unfiltered), // not supported
         macondo::bot_request::BotCode::SimmingBot => (false, OmgBotType::Sim),
+        macondo::bot_request::BotCode::HastyPlusEndgameBot => (false, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::SimmingInferBot => (false, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::Unknown => (false, OmgBotType::Unfiltered), // not supported
     };
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
         OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
