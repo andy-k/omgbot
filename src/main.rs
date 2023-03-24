@@ -113,6 +113,7 @@ struct ElucubrateArguments<
     kwg: &'a std::sync::Arc<kwg::Kwg>,
     game_config: &'a std::sync::Arc<game_config::GameConfig<'a>>,
     klv: &'a std::sync::Arc<klv::Klv>,
+    noleave_klv: &'a std::sync::Arc<klv::Klv>,
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader<'a>>,
@@ -142,6 +143,7 @@ async fn elucubrate<
         kwg,
         game_config,
         klv,
+        noleave_klv,
         mut move_generator,
         is_jumbled,
         rack_reader,
@@ -273,7 +275,7 @@ async fn elucubrate<
         macondo::bot_request::BotCode::Level3Probabilistic => (false, OmgBotType::Tilt(3)),
         macondo::bot_request::BotCode::Level4Probabilistic => (false, OmgBotType::Tilt(4)),
         macondo::bot_request::BotCode::Level5Probabilistic => (false, OmgBotType::Tilt(5)),
-        macondo::bot_request::BotCode::NoLeaveBot => (false, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::NoLeaveBot => (false, OmgBotType::Unfiltered),
         macondo::bot_request::BotCode::SimmingBot => (false, OmgBotType::Sim),
         macondo::bot_request::BotCode::HastyPlusEndgameBot => (false, OmgBotType::Unfiltered), // not supported
         macondo::bot_request::BotCode::SimmingInferBot => (false, OmgBotType::Unfiltered), // not supported
@@ -338,7 +340,10 @@ async fn elucubrate<
         board_tiles: &game_state.board_tiles,
         game_config,
         kwg: used_kwg,
-        klv,
+        klv: match bot_req.bot_type() {
+            macondo::bot_request::BotCode::NoLeaveBot => noleave_klv,
+            _ => klv,
+        },
     };
 
     move_picker
@@ -435,7 +440,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let norwegian_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&std::fs::read(
         "norwegian.klv2",
     )?));
-    //let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
+    let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
     // one per supported config
     let game_config = std::sync::Arc::new(game_config::make_english_game_config());
     let jumbled_game_config = std::sync::Arc::new(game_config::make_jumbled_english_game_config());
@@ -728,6 +733,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 option_cel_kwg,
             }) => {
                 let nc = std::sync::Arc::clone(&nc);
+                let noleave_klv = std::sync::Arc::clone(&noleave_klv);
                 tokio::spawn(async move {
                     let game_state = game_state::GameState::new(&game_config);
                     let move_generator = movegen::KurniaMoveGenerator::new(&game_config);
@@ -895,6 +901,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             kwg: &kwg,
                             game_config: &game_config,
                             klv: &klv,
+                            noleave_klv: &noleave_klv,
                             move_generator,
                             is_jumbled,
                             rack_reader: &rack_reader,
