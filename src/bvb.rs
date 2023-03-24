@@ -198,7 +198,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
     while num_completed < num_games {
         // for nostalgic reasons, this uses CSW21.kwg with v1 english.klv
         let klv = klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?);
-        let game_config = game_config::make_common_english_game_config();
+        let game_config = game_config::make_english_game_config();
         let dim = game_config.board_layout().dim();
         let alphabet = game_config.alphabet();
         //let rack_reader = new_for_lowercase_racks(alphabet);
@@ -337,8 +337,8 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                 let mut tok = last_line.split(':');
                 match tok.next() {
                     Some("o") => {
-                        let score0 = i16::from_str(tok.next().ok_or("ongoing my score")?)?;
-                        let score1 = i16::from_str(tok.next().ok_or("ongoing your score")?)?;
+                        let score0 = i32::from_str(tok.next().ok_or("ongoing my score")?)?;
+                        let score1 = i32::from_str(tok.next().ok_or("ongoing your score")?)?;
                         let my_rack = tok.next().ok_or("my rack")?;
                         if tok.next().is_some() {
                             return Err("too many tokens".into());
@@ -347,8 +347,8 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                         (true, score0, score1)
                     }
                     Some("f") => {
-                        let score0 = i16::from_str(tok.next().ok_or("final my score")?)?;
-                        let score1 = i16::from_str(tok.next().ok_or("final your score")?)?;
+                        let score0 = i32::from_str(tok.next().ok_or("final my score")?)?;
+                        let score1 = i32::from_str(tok.next().ok_or("final your score")?)?;
                         if tok.next().is_some() {
                             return Err("too many tokens".into());
                         }

@@ -169,11 +169,7 @@ async fn elucubrate<
     let mut last_tile_placement = !0;
     let alphabet = game_config.alphabet();
     for (i, event) in game_history.events.iter().enumerate() {
-        if event.cumulative as i16 as i32 != event.cumulative {
-            wolges::return_error!(format!("unsupported score {}", event.cumulative));
-        }
-        game_state.players[determine_player_index(event, game_history)].score =
-            event.cumulative as i16;
+        game_state.players[determine_player_index(event, game_history)].score = event.cumulative;
         match event.r#type() {
             macondo::game_event::Type::PhonyTilesReturned => {
                 last_tile_placement = !0;
@@ -428,7 +424,7 @@ async fn elucubrate<
             }
 
             game_event.played_tiles = s;
-            game_event.score = *score as i32;
+            game_event.score = *score;
         }
     }
     Ok(Some((game_event, would_sleep && can_sleep)))
@@ -455,7 +451,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?));
     //let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
     // one per supported config
-    let game_config = std::sync::Arc::new(game_config::make_common_english_game_config());
+    let game_config = std::sync::Arc::new(game_config::make_english_game_config());
     let jumbled_game_config = std::sync::Arc::new(game_config::make_jumbled_english_game_config());
     let super_game_config = std::sync::Arc::new(game_config::make_super_english_game_config());
     let jumbled_super_game_config =
