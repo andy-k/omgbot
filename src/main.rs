@@ -633,8 +633,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
     let mut sub = nc
         .queue_subscribe("bot.commands".to_string(), "bot_queue".to_string())
-        .await
-        .map_err(|e| e as Box<dyn std::error::Error>)?;
+        .await?;
     println!("ready");
     while let Some(msg) = sub.next().await {
         let msg_received_instant = std::time::Instant::now();
