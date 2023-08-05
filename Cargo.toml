@@ -13,7 +13,7 @@ resolver = "2"
 opt-level = 3
 
 [dependencies]
-async-nats = "0.29.0"
+async-nats = "0.31.0"
 env_logger = "0.10.0"
 futures-util = "0.3.28"
 log = "0.4.19"
