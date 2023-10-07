@@ -13,11 +13,11 @@ resolver = "2"
 opt-level = 3
 
 [dependencies]
-async-nats = "0.31.0"
+async-nats = "0.32.1"
 env_logger = "0.10.0"
 futures-util = "0.3.28"
 log = "0.4.20"
-prost = "0.11.9"
+prost = "0.12.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 reqwest = { version = "0.11.22", features = ["blocking"] }
@@ -25,7 +25,7 @@ tokio = { version = "1.32.0", features = ["full"] }
 wolges = { path = "wolges" }
 
 [build-dependencies]
-prost-build = "0.11.9"
+prost-build = "0.12.1"
 
 [[bin]]
 name = "omgbot"
