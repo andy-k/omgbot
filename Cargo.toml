@@ -16,12 +16,12 @@ opt-level = 3
 async-nats = "0.31.0"
 env_logger = "0.10.0"
 futures-util = "0.3.28"
-log = "0.4.19"
+log = "0.4.20"
 prost = "0.11.9"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
-reqwest = { version = "0.11.18", features = ["blocking"] }
-tokio = { version = "1.29.1", features = ["full"] }
+reqwest = { version = "0.11.22", features = ["blocking"] }
+tokio = { version = "1.32.0", features = ["full"] }
 wolges = { path = "wolges" }
 
 [build-dependencies]
