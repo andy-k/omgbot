@@ -198,8 +198,7 @@ async fn elucubrate<
 
     // load the racks, validate the bag
     let alphabet = game_config.alphabet();
-    let mut available_tally_buf = Vec::new();
-    available_tally_buf.reserve(alphabet.len() as usize);
+    let mut available_tally_buf = Vec::with_capacity(alphabet.len() as usize);
     available_tally_buf.extend((0..alphabet.len()).map(|tile| alphabet.freq(tile)));
     for player_idx in 0..2 {
         let rack = &mut game_state.players[player_idx].rack;
