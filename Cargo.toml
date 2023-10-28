@@ -15,7 +15,7 @@ opt-level = 3
 [dependencies]
 async-nats = "0.32.1"
 env_logger = "0.10.0"
-futures-util = "0.3.28"
+futures-util = "0.3.29"
 log = "0.4.20"
 prost = "0.12.1"
 rand = "0.8.5"
