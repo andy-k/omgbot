@@ -343,6 +343,7 @@ async fn elucubrate<
             macondo::bot_request::BotCode::NoLeaveBot => noleave_klv,
             _ => klv,
         },
+        kwg_representative: None,
     };
 
     move_picker
