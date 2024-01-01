@@ -505,7 +505,6 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
                     game_config: &game_config,
                     kwg: &kwg,
                     klv: &klv,
-                    kwg_representative: None,
                 };
                 move_picker.pick_a_move(
                     &mut move_filter,
