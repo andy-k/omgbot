@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2023 Andy Kurnia.
+// Copyright (C) 2020-2024 Andy Kurnia.
 
 pub mod macondo {
     #![allow(clippy::derive_partial_eq_without_eq)]
