@@ -464,7 +464,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let german_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         german_game_config.alphabet(),
     ));
-    let norwergian_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+    let norwegian_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         norwegian_game_config.alphabet(),
     ));
     let english_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
@@ -476,7 +476,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let german_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         german_game_config.alphabet(),
     ));
-    let norwergian_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+    let norwegian_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         norwegian_game_config.alphabet(),
     ));
     let lexicons = [
@@ -569,7 +569,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Language::English => english_rack_reader.clone(),
                 Language::French => french_rack_reader.clone(),
                 Language::German => german_rack_reader.clone(),
-                Language::Norwegian => norwergian_rack_reader.clone(),
+                Language::Norwegian => norwegian_rack_reader.clone(),
             },
         );
         play_readers.insert(
@@ -578,7 +578,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Language::English => english_play_reader.clone(),
                 Language::French => french_play_reader.clone(),
                 Language::German => german_play_reader.clone(),
-                Language::Norwegian => norwergian_play_reader.clone(),
+                Language::Norwegian => norwegian_play_reader.clone(),
             },
         );
     }
