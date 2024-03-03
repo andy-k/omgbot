@@ -87,7 +87,7 @@ fn parse_coord_token(coord: &str, dim: matrix::Dim) -> Option<Coord> {
 
 // handles '.' and the equivalent of A-Z, a-z
 fn parse_played_tiles(
-    alphabet_reader: &alphabet::AlphabetReader<'_>,
+    alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -114,7 +114,7 @@ fn parse_played_tiles(
 // the server previously used this
 #[allow(dead_code)]
 #[inline(always)]
-fn from_lowercase_rack<'a>(alphabet: &alphabet::Alphabet<'a>, idx: u8) -> Option<&'a str> {
+fn from_lowercase_rack(alphabet: &alphabet::Alphabet, idx: u8) -> Option<&str> {
     if idx == 0 {
         alphabet.of_rack(idx)
     } else if idx & 0x80 == 0 {
@@ -125,12 +125,15 @@ fn from_lowercase_rack<'a>(alphabet: &alphabet::Alphabet<'a>, idx: u8) -> Option
 }
 
 #[allow(dead_code)]
-fn new_for_lowercase_racks<'a>(alphabet: &alphabet::Alphabet<'a>) -> alphabet::AlphabetReader<'a> {
+fn new_for_lowercase_racks(alphabet: &alphabet::Alphabet) -> alphabet::AlphabetReader {
     let supported_tiles = (0..alphabet.len())
         .map(|tile| {
             (
                 tile,
-                from_lowercase_rack(alphabet, tile).unwrap().as_bytes(),
+                from_lowercase_rack(alphabet, tile)
+                    .unwrap()
+                    .as_bytes()
+                    .into(),
             )
         })
         .collect::<Box<_>>();
@@ -139,7 +142,7 @@ fn new_for_lowercase_racks<'a>(alphabet: &alphabet::Alphabet<'a>) -> alphabet::A
 
 // handles the equivalent of '?', A-Z
 fn parse_rack(
-    alphabet_reader: &alphabet::AlphabetReader<'_>,
+    alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {

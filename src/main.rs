@@ -12,7 +12,7 @@ use wolges::*;
 
 // handles '.' and the equivalent of A-Z, a-z
 fn parse_played_tiles(
-    alphabet_reader: &alphabet::AlphabetReader<'_>,
+    alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -38,7 +38,7 @@ fn parse_played_tiles(
 
 // handles the equivalent of '?', A-Z
 fn parse_rack(
-    alphabet_reader: &alphabet::AlphabetReader<'_>,
+    alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -102,7 +102,7 @@ struct ElucubrateArguments<
         &mut [u8],
         &macondo::GameEvent,
         Option<&kwg::Kwg>,
-        &alphabet::Alphabet<'_>,
+        &alphabet::Alphabet,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
 > {
@@ -111,12 +111,12 @@ struct ElucubrateArguments<
     game_state: game_state::GameState,
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg>,
-    game_config: &'a std::sync::Arc<game_config::GameConfig<'a>>,
+    game_config: &'a std::sync::Arc<game_config::GameConfig>,
     klv: &'a std::sync::Arc<klv::Klv>,
     noleave_klv: &'a std::sync::Arc<klv::Klv>,
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
-    rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader<'a>>,
+    rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
     option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
 }
 
@@ -131,7 +131,7 @@ async fn elucubrate<
         &mut [u8],
         &macondo::GameEvent,
         Option<&kwg::Kwg>,
-        &alphabet::Alphabet<'_>,
+        &alphabet::Alphabet,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
 >(
@@ -670,10 +670,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             bot_req: Box<macondo::BotRequest>,
             kwg: std::sync::Arc<kwg::Kwg>,
             klv: std::sync::Arc<klv::Klv>,
-            game_config: std::sync::Arc<game_config::GameConfig<'a>>,
+            game_config: std::sync::Arc<game_config::GameConfig>,
             tilter: Option<move_filter::Tilt<'a>>,
-            rack_reader: std::sync::Arc<alphabet::AlphabetReader<'a>>,
-            play_reader: std::sync::Arc<alphabet::AlphabetReader<'a>>,
+            rack_reader: std::sync::Arc<alphabet::AlphabetReader>,
+            play_reader: std::sync::Arc<alphabet::AlphabetReader>,
             option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
@@ -784,7 +784,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         |board_tiles: &mut [u8],
                          event: &macondo::GameEvent,
                          kwg: Option<&kwg::Kwg>,
-                         alphabet: &alphabet::Alphabet<'_>,
+                         alphabet: &alphabet::Alphabet,
                          is_jumbled: bool|
                          -> Result<bool, Box<dyn std::error::Error>> {
                             let board_layout = game_config.board_layout();
