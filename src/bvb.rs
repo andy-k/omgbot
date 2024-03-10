@@ -28,7 +28,7 @@ struct Coord {
     idx: i8,
 }
 
-fn parse_coord_token(coord: &str, dim: matrix::Dim) -> Option<Coord> {
+fn parse_coord_token(coord: &str, dim: &matrix::Dim) -> Option<Coord> {
     let b = coord.as_bytes();
     let l1 = b
         .iter()
