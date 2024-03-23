@@ -575,7 +575,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tilters.insert(
                     lexicon.to_string(),
                     move_filter::Tilt::new(
-                        game_configs.get(&lexicon.to_string()).unwrap(),
+                        game_configs.get(*lexicon).unwrap(),
                         &kwg_arc.clone(),
                         move_filter::Tilt::length_importances(),
                     ),
