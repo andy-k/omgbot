@@ -643,7 +643,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cel_kwgs.insert(
                     lexicon.to_string(),
                     std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&build::build(
-                        build::BuildFormat::Gaddawg,
+                        build::BuildContent::Gaddawg,
+                        build::BuildLayout::Wolges,
                         &v2,
                     )?)),
                 );
