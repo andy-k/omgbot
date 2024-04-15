@@ -14,17 +14,17 @@ jobs:
         - macos-latest
     runs-on: "${{ matrix.os }}"
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         repository: domino14/macondo
         path: macondo
     - name: Link proto
       run: ln -s ../macondo/api/proto/macondo/macondo.proto src
     - name: Install Protoc
-      uses: arduino/setup-protoc@v1
+      uses: arduino/setup-protoc@v3
       with:
         repo-token: "${{ secrets.GITHUB_TOKEN }}"
     - name: Version
