@@ -112,7 +112,6 @@ fn parse_played_tiles(
 }
 
 // the server previously used this
-#[allow(dead_code)]
 #[inline(always)]
 fn from_lowercase_rack(alphabet: &alphabet::Alphabet, idx: u8) -> Option<&str> {
     if idx == 0 {
@@ -124,7 +123,7 @@ fn from_lowercase_rack(alphabet: &alphabet::Alphabet, idx: u8) -> Option<&str> {
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 fn new_for_lowercase_racks(alphabet: &alphabet::Alphabet) -> alphabet::AlphabetReader {
     let supported_tiles = (0..alphabet.len())
         .map(|tile| {

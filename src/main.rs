@@ -83,7 +83,7 @@ thread_local! {
         std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_entropy()));
 }
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 #[inline(always)]
 fn determine_player_index(
     event: &macondo::GameEvent,
@@ -120,7 +120,7 @@ struct ElucubrateArguments<
     option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
 }
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 #[inline(always)]
 fn deprecated_second_went_first(game_history: &macondo::GameHistory) -> bool {
     game_history.second_went_first
