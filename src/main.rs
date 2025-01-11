@@ -372,7 +372,7 @@ async fn elucubrate<
     let mut can_sleep = true;
     match &play {
         movegen::Play::Exchange { tiles } => {
-            if tiles.len() == 0 {
+            if tiles.is_empty() {
                 game_event.set_type(macondo::game_event::Type::Pass);
                 can_sleep = false;
             } else {
