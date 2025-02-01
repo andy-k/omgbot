@@ -17,7 +17,7 @@ use std::str::FromStr;
 
 thread_local! {
     static RNG: std::cell::RefCell<Box<dyn RngCore>> =
-        std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_entropy()));
+        std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_os_rng()));
 }
 
 // TODO remove derive

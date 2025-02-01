@@ -80,7 +80,7 @@ fn each_word<F: FnMut(&[u8])>(g: &kwg::Kwg, f: F) {
 
 thread_local! {
     static RNG: std::cell::RefCell<Box<dyn RngCore>> =
-        std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_entropy()));
+        std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_os_rng()));
 }
 
 #[expect(deprecated)]
@@ -969,7 +969,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if should_reply {
                         if can_sleep {
                             let time_for_move_ms: u128 =
-                                RNG.with(|rng| rng.borrow_mut().gen_range(2000..=4000));
+                                RNG.with(|rng| rng.borrow_mut().random_range(2000..=4000));
                             let elapsed_ms = msg_received_instant.elapsed().as_millis();
                             let sleep_for_ms = time_for_move_ms.saturating_sub(elapsed_ms) as u64;
                             println!("sleeping for {sleep_for_ms}ms");
