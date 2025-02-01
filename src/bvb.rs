@@ -447,7 +447,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
             game_state.bag.0.extend(
                 (0u8..)
                     .zip(available_tally_buf.iter())
-                    .flat_map(|(tile, &count)| std::iter::repeat(tile).take(count as usize)),
+                    .flat_map(|(tile, &count)| std::iter::repeat_n(tile, count as usize)),
             );
 
             // just fill in one rack, leave opponent's rack empty

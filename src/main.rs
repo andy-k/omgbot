@@ -238,7 +238,7 @@ async fn elucubrate<
     game_state.bag.0.extend(
         (0u8..)
             .zip(available_tally_buf.iter())
-            .flat_map(|(tile, &count)| std::iter::repeat(tile).take(count as usize)),
+            .flat_map(|(tile, &count)| std::iter::repeat_n(tile, count as usize)),
     );
     RNG.with(|rng| {
         game_state.bag.shuffle(&mut *rng.borrow_mut());
