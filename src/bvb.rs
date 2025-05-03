@@ -178,21 +178,26 @@ fn show_all(client: &reqwest::blocking::Client, url: &str, gameid: &str) -> erro
     Ok(())
 }
 
-fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Returns<()> {
+fn do_it<N: kwg::Node>(
+    url: &str,
+    gametag: &str,
+    userid: &str,
+    num_games: usize,
+) -> error::Returns<()> {
     let mut total_win = 0.0f64;
     let mut total_loss = 0.0f64;
     let mut total_spread = 0i64;
     let mut num_completed = 0usize;
     while num_completed < num_games {
         // for nostalgic reasons, this uses CSW21.kwg with v1 english.klv
-        let klv = klv::Klv::from_bytes_alloc(&std::fs::read("english.klv")?);
+        let klv = klv::Klv::<kwg::Node22>::from_bytes_alloc(&std::fs::read("english.klv")?);
         let game_config = game_config::make_english_game_config();
         let dim = game_config.board_layout().dim();
         let alphabet = game_config.alphabet();
         //let rack_reader = new_for_lowercase_racks(alphabet);
         let rack_reader = alphabet::AlphabetReader::new_for_racks(alphabet);
         let play_reader = alphabet::AlphabetReader::new_for_plays(alphabet);
-        let kwg = kwg::Kwg::from_bytes_alloc(&std::fs::read("CSW21.kwg")?);
+        let kwg = kwg::Kwg::<N>::from_bytes_alloc(&std::fs::read("CSW21.kwg")?);
         let alphabet_len_without_blank = alphabet.len() - 1;
         let mut available_tally_buf = Vec::new();
         let mut game_state = game_state::GameState::new(&game_config);
@@ -204,7 +209,7 @@ fn do_it(url: &str, gametag: &str, userid: &str, num_games: usize) -> error::Ret
         let mut place_tiles_buf = Vec::new();
         let mut place_tiles = |board_tiles: &mut [u8],
                                event: &str,
-                               kwg: Option<&kwg::Kwg>|
+                               kwg: Option<&kwg::Kwg<N>>|
          -> Result<bool, Box<dyn std::error::Error>> {
             // event is of the format 9I:SO.UwU
 
@@ -615,6 +620,6 @@ fn main() -> error::Returns<()> {
         );
         Ok(())
     } else {
-        do_it(&args[1], &args[2], &args[3], usize::from_str(&args[4])?)
+        do_it::<kwg::Node22>(&args[1], &args[2], &args[3], usize::from_str(&args[4])?)
     }
 }

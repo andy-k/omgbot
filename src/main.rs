@@ -8,6 +8,7 @@ pub mod macondo {
 use futures_util::StreamExt;
 use prost::Message;
 use rand::prelude::*;
+use wolges::kwg::Node;
 use wolges::*;
 
 // handles '.' and the equivalent of A-Z, a-z
@@ -45,13 +46,13 @@ fn parse_rack(
     alphabet_reader.set_word(s, v)
 }
 
-fn each_word<F: FnMut(&[u8])>(g: &kwg::Kwg, f: F) {
-    struct Env<'a, F: FnMut(&[u8])> {
-        g: &'a kwg::Kwg,
+fn each_word<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
+    struct Env<'a, F: FnMut(&[u8]), N: kwg::Node> {
+        g: &'a kwg::Kwg<N>,
         v: &'a mut Vec<u8>,
         f: F,
     }
-    fn iter<F: FnMut(&[u8])>(env: &mut Env<'_, F>, mut p: i32) {
+    fn iter<F: FnMut(&[u8]), N: kwg::Node>(env: &mut Env<'_, F, N>, mut p: i32) {
         loop {
             let t = env.g[p].tile();
             env.v.push(t);
@@ -101,23 +102,24 @@ struct ElucubrateArguments<
     PlaceTilesType: FnMut(
         &mut [u8],
         &macondo::GameEvent,
-        Option<&kwg::Kwg>,
+        Option<&kwg::Kwg<N>>,
         &alphabet::Alphabet,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
+    N: kwg::Node,
 > {
     bot_req: Box<macondo::BotRequest>,
     tilter: Option<wolges::move_filter::Tilt<'a>>,
     game_state: game_state::GameState,
     place_tiles: PlaceTilesType,
-    kwg: &'a std::sync::Arc<kwg::Kwg>,
+    kwg: &'a std::sync::Arc<kwg::Kwg<N>>,
     game_config: &'a std::sync::Arc<game_config::GameConfig>,
-    klv: &'a std::sync::Arc<klv::Klv>,
-    noleave_klv: &'a std::sync::Arc<klv::Klv>,
+    klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
+    noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
-    option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg>>,
+    option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
 }
 
 #[expect(deprecated)]
@@ -130,10 +132,11 @@ async fn elucubrate<
     PlaceTilesType: FnMut(
         &mut [u8],
         &macondo::GameEvent,
-        Option<&kwg::Kwg>,
+        Option<&kwg::Kwg<N>>,
         &alphabet::Alphabet,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
+    N: kwg::Node,
 >(
     ElucubrateArguments {
         bot_req,
@@ -148,7 +151,7 @@ async fn elucubrate<
         is_jumbled,
         rack_reader,
         option_common_word_kwg,
-    }: ElucubrateArguments<'_, PlaceTilesType>,
+    }: ElucubrateArguments<'_, PlaceTilesType, N>,
 ) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
 
@@ -732,13 +735,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|game_history| game_history.uid.clone());
         struct RecycledStuffs<'a> {
             bot_req: Box<macondo::BotRequest>,
-            kwg: std::sync::Arc<kwg::Kwg>,
-            klv: std::sync::Arc<klv::Klv>,
+            kwg: std::sync::Arc<kwg::Kwg<kwg::Node22>>,
+            klv: std::sync::Arc<klv::Klv<kwg::Node22>>,
             game_config: std::sync::Arc<game_config::GameConfig>,
             tilter: Option<move_filter::Tilt<'a>>,
             rack_reader: std::sync::Arc<alphabet::AlphabetReader>,
             play_reader: std::sync::Arc<alphabet::AlphabetReader>,
-            option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg>>,
+            option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<kwg::Node22>>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
             let bot_req = Box::new(bot_req?);
@@ -850,7 +853,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let place_tiles =
                         |board_tiles: &mut [u8],
                          event: &macondo::GameEvent,
-                         kwg: Option<&kwg::Kwg>,
+                         kwg: Option<&kwg::Kwg<kwg::Node22>>,
                          alphabet: &alphabet::Alphabet,
                          is_jumbled: bool|
                          -> Result<bool, Box<dyn std::error::Error>> {
