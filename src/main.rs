@@ -534,6 +534,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut super_game_configs = std::collections::HashMap::new();
     let mut jumbled_super_game_configs = std::collections::HashMap::new();
     let mut klvs = std::collections::HashMap::new();
+    let mut super_klvs = std::collections::HashMap::new();
     let mut kwgs = std::collections::HashMap::new();
     let mut tilters = std::collections::HashMap::new();
     let mut kads = std::collections::HashMap::new();
@@ -581,6 +582,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match std::fs::read(format!("{lexicon}.klv2")) {
             Ok(klv_bytes) => {
                 let klv_arc = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&klv_bytes));
+                match std::fs::read(format!("super-{lexicon}.klv2")) {
+                    Ok(super_klv_bytes) => {
+                        let super_klv_arc =
+                            std::sync::Arc::new(klv::Klv::from_bytes_alloc(&super_klv_bytes));
+                        super_klvs.insert(lexicon.to_string(), super_klv_arc);
+                    }
+                    Err(_) => {
+                        super_klvs.insert(lexicon.to_string(), std::sync::Arc::clone(&klv_arc));
+                    }
+                }
                 klvs.insert(lexicon.to_string(), klv_arc);
             }
             Err(err) => {
@@ -755,9 +766,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             .get(&game_history.lexicon)
             .ok_or("not familiar with the lexicon")?;
-            let klv = klvs
-                .get(&game_history.lexicon)
-                .ok_or("not familiar with the lexicon")?;
+            let klv = if is_super {
+                super_klvs.get(&game_history.lexicon)
+            } else {
+                klvs.get(&game_history.lexicon)
+            }
+            .ok_or("not familiar with the lexicon")?;
             let (kwg, tilter) = match is_jumbled {
                 true => {
                     let kad = kads
