@@ -117,7 +117,7 @@ struct ElucubrateArguments<
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
-    option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
+    option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg>>,
 }
 
 #[expect(deprecated)]
@@ -147,7 +147,7 @@ async fn elucubrate<
         mut move_generator,
         is_jumbled,
         rack_reader,
-        option_cel_kwg,
+        option_common_word_kwg,
     }: ElucubrateArguments<'_, PlaceTilesType>,
 ) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
@@ -263,12 +263,12 @@ async fn elucubrate<
         Tilt(i8),
         Sim,
     }
-    let (use_cel, effective_bot_type) = match bot_req.bot_type() {
+    let (use_common_word, effective_bot_type) = match bot_req.bot_type() {
         macondo::bot_request::BotCode::HastyBot => (false, OmgBotType::Unfiltered),
-        macondo::bot_request::BotCode::Level1CelBot => (true, OmgBotType::Tilt(1)),
-        macondo::bot_request::BotCode::Level2CelBot => (true, OmgBotType::Tilt(2)),
-        macondo::bot_request::BotCode::Level3CelBot => (true, OmgBotType::Tilt(3)),
-        macondo::bot_request::BotCode::Level4CelBot => (true, OmgBotType::Tilt(4)),
+        macondo::bot_request::BotCode::Level1CommonWordBot => (true, OmgBotType::Tilt(1)),
+        macondo::bot_request::BotCode::Level2CommonWordBot => (true, OmgBotType::Tilt(2)),
+        macondo::bot_request::BotCode::Level3CommonWordBot => (true, OmgBotType::Tilt(3)),
+        macondo::bot_request::BotCode::Level4CommonWordBot => (true, OmgBotType::Tilt(4)),
         macondo::bot_request::BotCode::Level1Probabilistic => (false, OmgBotType::Tilt(1)),
         macondo::bot_request::BotCode::Level2Probabilistic => (false, OmgBotType::Tilt(2)),
         macondo::bot_request::BotCode::Level3Probabilistic => (false, OmgBotType::Tilt(3)),
@@ -304,12 +304,12 @@ async fn elucubrate<
             return Ok(None);
         }
     };
-    let used_kwg = if use_cel {
-        if option_cel_kwg.is_none() {
-            println!("cel unavailable, so not responding");
+    let used_kwg = if use_common_word {
+        if option_common_word_kwg.is_none() {
+            println!("common_word unavailable, so not responding");
             return Ok(None);
         }
-        option_cel_kwg.as_ref().unwrap()
+        option_common_word_kwg.as_ref().unwrap()
     } else {
         kwg
     };
@@ -618,7 +618,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
-    let mut cel_kwgs = std::collections::HashMap::new();
+    let mut common_word_kwgs = std::collections::HashMap::new();
     if let Some(ecwl_kwg) = kwgs.get("ECWL") {
         let mut v1 = Vec::<bites::Bites>::new();
         each_word(ecwl_kwg, |w| v1.push(w.into()));
@@ -640,7 +640,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 });
-                cel_kwgs.insert(
+                common_word_kwgs.insert(
                     lexicon.to_string(),
                     std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&build::build(
                         build::BuildContent::Gaddawg,
@@ -675,7 +675,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tilter: Option<move_filter::Tilt<'a>>,
             rack_reader: std::sync::Arc<alphabet::AlphabetReader>,
             play_reader: std::sync::Arc<alphabet::AlphabetReader>,
-            option_cel_kwg: Option<std::sync::Arc<kwg::Kwg>>,
+            option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
             let bot_req = Box::new(bot_req?);
@@ -726,7 +726,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let play_reader = play_readers
                 .get(&game_history.lexicon)
                 .ok_or("not familiar with the lexicon")?;
-            let option_cel_kwg = cel_kwgs.get(&game_history.lexicon);
+            let option_common_word_kwg = common_word_kwgs.get(&game_history.lexicon);
 
             Ok(RecycledStuffs {
                 bot_req,
@@ -736,7 +736,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tilter: tilter.cloned(),
                 rack_reader: std::sync::Arc::clone(rack_reader),
                 play_reader: std::sync::Arc::clone(play_reader),
-                option_cel_kwg: option_cel_kwg.cloned(),
+                option_common_word_kwg: option_common_word_kwg.cloned(),
             })
         })();
         match recycled_stuffs {
@@ -766,7 +766,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tilter,
                 rack_reader,
                 play_reader,
-                option_cel_kwg,
+                option_common_word_kwg,
             }) => {
                 let nc = std::sync::Arc::clone(&nc);
                 let noleave_klv = std::sync::Arc::clone(&noleave_klv);
@@ -941,7 +941,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             move_generator,
                             is_jumbled,
                             rack_reader: &rack_reader,
-                            option_cel_kwg,
+                            option_common_word_kwg,
                         })
                         .await;
 
