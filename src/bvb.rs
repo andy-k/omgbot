@@ -167,7 +167,7 @@ fn do_get(
     query: &str,
 ) -> error::Returns<()> {
     let txt = check_ok(client.get(format!("{url}/games/{gameid}/{query}")).send()?)?.text()?;
-    info!("{}\n{}", query, txt);
+    info!("{query}\n{txt}");
     Ok(())
 }
 
@@ -301,7 +301,7 @@ fn do_it<N: kwg::Node>(
         if gameid.is_empty() {
             return Err("no gameid".into());
         }
-        info!("gameid={}", gameid);
+        info!("gameid={gameid}");
         // assume no need to encode the gameid
 
         let mut rack = Vec::new();
@@ -322,7 +322,7 @@ fn do_it<N: kwg::Node>(
                 show_all(&client, url, &gameid)?; // our turn
             }
 
-            info!("waitTurn\n{}", events);
+            info!("waitTurn\n{events}");
 
             let mut event_lines = events.lines().collect::<Vec<_>>();
             let last_line = event_lines.pop().ok_or("no lines")?;
@@ -366,7 +366,7 @@ fn do_it<N: kwg::Node>(
                         .send()?,
                 )?
                 .text()?;
-                info!("waitTurn.gcg\n{}", gcg);
+                info!("waitTurn.gcg\n{gcg}");
             }
 
             let mut should_challenge = false;
@@ -474,29 +474,11 @@ fn do_it<N: kwg::Node>(
                     total_spread += this_spread as i64;
                     num_completed += 1;
                     info!(
-                        "Result: Game {}: {}-{} ({}-{} {}), Total: {}-{} {}",
-                        num_completed,
-                        score0,
-                        score1,
-                        this_win,
-                        this_loss,
-                        this_spread,
-                        total_win,
-                        total_loss,
-                        total_spread
+                        "Result: Game {num_completed}: {score0}-{score1} ({this_win}-{this_loss} {this_spread}), Total: {total_win}-{total_loss} {total_spread}"
                     );
                 } else {
                     info!(
-                        "Result: Invalid Game: {}-{} ({}-{} {}), Not Updated Total (from {} games): {}-{} {}",
-                        score0,
-                        score1,
-                        this_win,
-                        this_loss,
-                        this_spread,
-                        num_completed,
-                        total_win,
-                        total_loss,
-                        total_spread
+                        "Result: Invalid Game: {score0}-{score1} ({this_win}-{this_loss} {this_spread}), Not Updated Total (from {num_completed} games): {total_win}-{total_loss} {total_spread}"
                     );
                 }
                 break;
@@ -567,7 +549,7 @@ fn do_it<N: kwg::Node>(
                 game_state.bag.0.sort_unstable(); // for display
                 display::print_game_state(&game_config, &game_state, None);
             }
-            info!("makePlay {}", move_to_send_buf);
+            info!("makePlay {move_to_send_buf}");
 
             check_ok(
                 client
@@ -588,7 +570,7 @@ fn do_it<N: kwg::Node>(
             let status = resp.status();
             if status.is_success() {
                 resp.text()?;
-                info!("game {} deleted", gameid);
+                info!("game {gameid} deleted");
             } else {
                 warn!(
                     "game {} not deleted: {:?}: {}",
@@ -599,10 +581,7 @@ fn do_it<N: kwg::Node>(
             }
         }
     }
-    info!(
-        "Final Result: After Game {}: Total: {}-{} {}",
-        num_games, total_win, total_loss, total_spread
-    );
+    info!("Final Result: After Game {num_games}: Total: {total_win}-{total_loss} {total_spread}");
     Ok(())
 }
 

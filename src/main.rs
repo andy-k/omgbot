@@ -973,8 +973,8 @@ fn do_it<N: kwg::Node + Send + Sync + 'static>(
     play_reader: std::sync::Arc<alphabet::AlphabetReader>,
     option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
 ) {
-    let nc = std::sync::Arc::clone(&nc);
-    let noleave_klv = std::sync::Arc::clone(&noleave_klv);
+    let nc = std::sync::Arc::clone(nc);
+    let noleave_klv = std::sync::Arc::clone(noleave_klv);
     tokio::spawn(async move {
         let game_state = game_state::GameState::new(&game_config);
         let move_generator = movegen::KurniaMoveGenerator::new(&game_config);
