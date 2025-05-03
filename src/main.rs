@@ -427,6 +427,7 @@ enum Language {
     German,
     Norwegian,
     Polish,
+    Spanish,
 }
 
 #[tokio::main]
@@ -459,6 +460,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let polish_game_config = std::sync::Arc::new(game_config::make_polish_game_config());
     let jumbled_polish_game_config =
         std::sync::Arc::new(game_config::make_jumbled_polish_game_config());
+    let spanish_game_config = std::sync::Arc::new(game_config::make_spanish_game_config());
+    let jumbled_spanish_game_config =
+        std::sync::Arc::new(game_config::make_jumbled_spanish_game_config());
     let catalan_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         catalan_game_config.alphabet(),
     ));
@@ -476,6 +480,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     let polish_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         polish_game_config.alphabet(),
+    ));
+    let spanish_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        spanish_game_config.alphabet(),
     ));
     let catalan_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         catalan_game_config.alphabet(),
@@ -495,12 +502,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let polish_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         polish_game_config.alphabet(),
     ));
+    let spanish_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        spanish_game_config.alphabet(),
+    ));
     let lexicons = [
+        ("CGL", Language::German),
         ("CSW19", Language::English),
         ("CSW19X", Language::English),
         ("CSW21", Language::English),
+        ("CSW24", Language::English),
+        ("CSW24X", Language::English),
         ("DISC2", Language::Catalan),
         ("ECWL", Language::English),
+        ("FILE2017", Language::Spanish),
         ("FRA20", Language::French),
         ("FRA24", Language::French),
         ("NSF21", Language::Norwegian),
@@ -511,7 +525,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("NWL20", Language::English),
         ("NWL23", Language::English),
         ("OSPS49", Language::Polish),
+        ("OSPS50", Language::Polish),
         ("RD28", Language::German),
+        ("RD29", Language::German),
     ];
     let mut game_configs = std::collections::HashMap::new();
     let mut jumbled_game_configs = std::collections::HashMap::new();
@@ -533,6 +549,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Language::German => german_game_config.clone(),
                 Language::Norwegian => norwegian_game_config.clone(),
                 Language::Polish => polish_game_config.clone(),
+                Language::Spanish => spanish_game_config.clone(),
             },
         );
         jumbled_game_configs.insert(
@@ -544,6 +561,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Language::German => jumbled_german_game_config.clone(),
                 Language::Norwegian => jumbled_norwegian_game_config.clone(),
                 Language::Polish => jumbled_polish_game_config.clone(),
+                Language::Spanish => jumbled_spanish_game_config.clone(),
             },
         );
         if let Language::Catalan = language {
@@ -604,6 +622,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Language::German => german_rack_reader.clone(),
                 Language::Norwegian => norwegian_rack_reader.clone(),
                 Language::Polish => polish_rack_reader.clone(),
+                Language::Spanish => spanish_rack_reader.clone(),
             },
         );
         play_readers.insert(
@@ -615,6 +634,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Language::German => german_play_reader.clone(),
                 Language::Norwegian => norwegian_play_reader.clone(),
                 Language::Polish => polish_play_reader.clone(),
+                Language::Spanish => spanish_play_reader.clone(),
             },
         );
     }
@@ -625,6 +645,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut v2 = Vec::<bites::Bites>::new();
         for (lexicon, language) in lexicons.iter() {
             if *lexicon != "ECWL" && matches!(language, Language::English) {
+                v2.clear();
+                let mut v1p = 0;
+                each_word(kwgs.get(*lexicon).unwrap(), |w| {
+                    while v1p < v1.len() {
+                        match v1[v1p][..].cmp(w) {
+                            std::cmp::Ordering::Greater => break,
+                            std::cmp::Ordering::Less => v1p += 1,
+                            std::cmp::Ordering::Equal => {
+                                v2.push(w.into());
+                                v1p += 1;
+                                break;
+                            }
+                        }
+                    }
+                });
+                common_word_kwgs.insert(
+                    lexicon.to_string(),
+                    std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&build::build(
+                        build::BuildContent::Gaddawg,
+                        build::BuildLayout::Wolges,
+                        &v2,
+                    )?)),
+                );
+            }
+        }
+    }
+    if let Some(cgl_kwg) = kwgs.get("CGL") {
+        let mut v1 = Vec::<bites::Bites>::new();
+        each_word(cgl_kwg, |w| v1.push(w.into()));
+        let mut v2 = Vec::<bites::Bites>::new();
+        for (lexicon, language) in lexicons.iter() {
+            if *lexicon != "CGL" && matches!(language, Language::German) {
                 v2.clear();
                 let mut v1p = 0;
                 each_word(kwgs.get(*lexicon).unwrap(), |w| {
