@@ -8,7 +8,6 @@ pub mod macondo {
 use futures_util::StreamExt;
 use prost::Message;
 use rand::prelude::*;
-use wolges::kwg::Node;
 use wolges::*;
 
 // handles '.' and the equivalent of A-Z, a-z
@@ -46,7 +45,12 @@ fn parse_rack(
     alphabet_reader.set_word(s, v)
 }
 
-fn each_word<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
+enum ArcKwgEither {
+    Node22(std::sync::Arc<kwg::Kwg<kwg::Node22>>),
+    Node24(std::sync::Arc<kwg::Kwg<kwg::Node24>>),
+}
+
+fn each_word_raw<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
     struct Env<'a, F: FnMut(&[u8]), N: kwg::Node> {
         g: &'a kwg::Kwg<N>,
         v: &'a mut Vec<u8>,
@@ -79,6 +83,13 @@ fn each_word<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
     );
 }
 
+fn each_word<F: FnMut(&[u8])>(g: &ArcKwgEither, f: F) {
+    match g {
+        ArcKwgEither::Node22(g) => each_word_raw(g, f),
+        ArcKwgEither::Node24(g) => each_word_raw(g, f),
+    }
+}
+
 thread_local! {
     static RNG: std::cell::RefCell<Box<dyn RngCore>> =
         std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_os_rng()));
@@ -106,7 +117,7 @@ struct ElucubrateArguments<
         &alphabet::Alphabet,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
-    N: kwg::Node,
+    N: kwg::Node + Send,
 > {
     bot_req: Box<macondo::BotRequest>,
     tilter: Option<wolges::move_filter::Tilt<'a>>,
@@ -136,7 +147,7 @@ async fn elucubrate<
         &alphabet::Alphabet,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
-    N: kwg::Node,
+    N: kwg::Node + Send,
 >(
     ElucubrateArguments {
         bot_req,
@@ -603,25 +614,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         match std::fs::read(format!("{lexicon}.kwg")) {
             Ok(kwg_bytes) => {
-                let kwg_arc = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kwg_bytes));
+                let kwg_arc = ArcKwgEither::Node22(std::sync::Arc::new(
+                    kwg::Kwg::from_bytes_alloc(&kwg_bytes),
+                ));
                 tilters.insert(
                     lexicon.to_string(),
                     move_filter::Tilt::new(
                         game_configs.get(*lexicon).unwrap(),
-                        &kwg_arc.clone(),
+                        &match kwg_arc {
+                            ArcKwgEither::Node22(ref kwg) => kwg,
+                            _ => panic!(),
+                        }
+                        .clone(),
                         move_filter::Tilt::length_importances(),
                     ),
                 );
-                kwgs.insert(lexicon.to_string(), kwg_arc);
+                kwgs.insert(lexicon.to_string(), std::sync::Arc::new(kwg_arc));
             }
-            Err(err) => {
-                eprintln!("warning: {lexicon}.kwg: {err}");
-            }
+            Err(err_kwg) => match std::fs::read(format!("{lexicon}.kbwg")) {
+                Ok(kbwg_bytes) => {
+                    let kbwg_arc = ArcKwgEither::Node24(std::sync::Arc::new(
+                        kwg::Kwg::from_bytes_alloc(&kbwg_bytes),
+                    ));
+                    tilters.insert(
+                        lexicon.to_string(),
+                        move_filter::Tilt::new(
+                            game_configs.get(*lexicon).unwrap(),
+                            &match kbwg_arc {
+                                ArcKwgEither::Node24(ref kbwg) => kbwg,
+                                _ => panic!(),
+                            }
+                            .clone(),
+                            move_filter::Tilt::length_importances(),
+                        ),
+                    );
+                    kwgs.insert(lexicon.to_string(), std::sync::Arc::new(kbwg_arc));
+                }
+                Err(err_kbwg) => {
+                    eprintln!("warning: {lexicon}.kwg: {err_kwg}");
+                    eprintln!("warning: {lexicon}.kbwg: {err_kbwg}");
+                }
+            },
         }
         match std::fs::read(format!("{lexicon}.kad")) {
             Ok(kad_bytes) => {
-                let kad_arc = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kad_bytes));
-                kads.insert(lexicon.to_string(), kad_arc);
+                let kad_arc = ArcKwgEither::Node22(std::sync::Arc::new(
+                    kwg::Kwg::from_bytes_alloc(&kad_bytes),
+                ));
+                kads.insert(lexicon.to_string(), std::sync::Arc::new(kad_arc));
             }
             Err(err) => {
                 eprintln!("warning: {lexicon}.kad: {err}");
@@ -661,7 +701,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if *lexicon != "ECWL" && matches!(language, Language::English) {
                 v2.clear();
                 let mut v1p = 0;
-                each_word(kwgs.get(*lexicon).unwrap(), |w| {
+                let kwg = kwgs.get(*lexicon).unwrap();
+                each_word(kwg, |w| {
                     while v1p < v1.len() {
                         match v1[v1p][..].cmp(w) {
                             std::cmp::Ordering::Greater => break,
@@ -676,11 +717,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 common_word_kwgs.insert(
                     lexicon.to_string(),
-                    std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&build::build(
-                        build::BuildContent::Gaddawg,
-                        build::BuildLayout::Wolges,
-                        &v2,
-                    )?)),
+                    std::sync::Arc::new(match **kwg {
+                        ArcKwgEither::Node22(_) => ArcKwgEither::Node22(std::sync::Arc::new(
+                            kwg::Kwg::from_bytes_alloc(&build::build(
+                                build::BuildContent::Gaddawg,
+                                build::BuildLayout::Wolges,
+                                &v2,
+                            )?),
+                        )),
+                        ArcKwgEither::Node24(_) => ArcKwgEither::Node24(std::sync::Arc::new(
+                            kwg::Kwg::from_bytes_alloc(&build::build_big(
+                                build::BuildContent::Gaddawg,
+                                build::BuildLayout::Wolges,
+                                &v2,
+                            )?),
+                        )),
+                    }),
                 );
             }
         }
@@ -693,7 +745,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if *lexicon != "CGL" && matches!(language, Language::German) {
                 v2.clear();
                 let mut v1p = 0;
-                each_word(kwgs.get(*lexicon).unwrap(), |w| {
+                let kwg = kwgs.get(*lexicon).unwrap();
+                each_word(kwg, |w| {
                     while v1p < v1.len() {
                         match v1[v1p][..].cmp(w) {
                             std::cmp::Ordering::Greater => break,
@@ -708,11 +761,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 common_word_kwgs.insert(
                     lexicon.to_string(),
-                    std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&build::build(
-                        build::BuildContent::Gaddawg,
-                        build::BuildLayout::Wolges,
-                        &v2,
-                    )?)),
+                    std::sync::Arc::new(match **kwg {
+                        ArcKwgEither::Node22(_) => ArcKwgEither::Node22(std::sync::Arc::new(
+                            kwg::Kwg::from_bytes_alloc(&build::build(
+                                build::BuildContent::Gaddawg,
+                                build::BuildLayout::Wolges,
+                                &v2,
+                            )?),
+                        )),
+                        ArcKwgEither::Node24(_) => ArcKwgEither::Node24(std::sync::Arc::new(
+                            kwg::Kwg::from_bytes_alloc(&build::build_big(
+                                build::BuildContent::Gaddawg,
+                                build::BuildLayout::Wolges,
+                                &v2,
+                            )?),
+                        )),
+                    }),
                 );
             }
         }
@@ -735,13 +799,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|game_history| game_history.uid.clone());
         struct RecycledStuffs<'a> {
             bot_req: Box<macondo::BotRequest>,
-            kwg: std::sync::Arc<kwg::Kwg<kwg::Node22>>,
+            kwg: std::sync::Arc<ArcKwgEither>,
             klv: std::sync::Arc<klv::Klv<kwg::Node22>>,
             game_config: std::sync::Arc<game_config::GameConfig>,
             tilter: Option<move_filter::Tilt<'a>>,
             rack_reader: std::sync::Arc<alphabet::AlphabetReader>,
             play_reader: std::sync::Arc<alphabet::AlphabetReader>,
-            option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<kwg::Node22>>>,
+            option_common_word_kwg: Option<std::sync::Arc<ArcKwgEither>>,
         }
         let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
             let bot_req = Box::new(bot_req?);
@@ -796,6 +860,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get(&game_history.lexicon)
                 .ok_or("not familiar with the lexicon")?;
             let option_common_word_kwg = common_word_kwgs.get(&game_history.lexicon);
+            // ensure it has the same node type as kwg
+            let kwg_variant = match **kwg {
+                ArcKwgEither::Node22(_) => 22,
+                ArcKwgEither::Node24(_) => 24,
+            };
+            let common_word_kwg_variant = match option_common_word_kwg {
+                None => kwg_variant,
+                Some(arc_thing) => match **arc_thing {
+                    ArcKwgEither::Node22(_) => 22,
+                    ArcKwgEither::Node24(_) => 24,
+                },
+            };
+            if kwg_variant != common_word_kwg_variant {
+                wolges::return_error!("common word kwg has different variant".into());
+            }
 
             Ok(RecycledStuffs {
                 bot_req,
@@ -836,228 +915,266 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 rack_reader,
                 play_reader,
                 option_common_word_kwg,
-            }) => {
-                let nc = std::sync::Arc::clone(&nc);
-                let noleave_klv = std::sync::Arc::clone(&noleave_klv);
-                tokio::spawn(async move {
-                    let game_state = game_state::GameState::new(&game_config);
-                    let move_generator = movegen::KurniaMoveGenerator::new(&game_config);
-                    let mut buf = Vec::new();
-                    let mut can_sleep = false;
-                    let mut should_reply = true;
-                    {
-                        let mut place_tiles_buf = Vec::new();
-                        let mut place_tiles_jumbled_main_tally = Vec::new();
-                        let mut place_tiles_jumbled_perpendicular_tally = Vec::new();
+            }) => match *kwg {
+                ArcKwgEither::Node22(ref kwg) => do_it(
+                    &nc,
+                    &noleave_klv,
+                    msg_received_instant,
+                    option_game_id,
+                    alloc_reply_chan,
+                    bot_req,
+                    kwg.clone(),
+                    klv,
+                    game_config,
+                    tilter,
+                    rack_reader,
+                    play_reader,
+                    option_common_word_kwg.and_then(|arc_thing| match *arc_thing {
+                        ArcKwgEither::Node22(ref common_word_kwg) => Some(common_word_kwg.clone()),
+                        _ => None,
+                    }),
+                ),
+                ArcKwgEither::Node24(ref kwg) => do_it(
+                    &nc,
+                    &noleave_klv,
+                    msg_received_instant,
+                    option_game_id,
+                    alloc_reply_chan,
+                    bot_req,
+                    kwg.clone(),
+                    klv,
+                    game_config,
+                    tilter,
+                    rack_reader,
+                    play_reader,
+                    option_common_word_kwg.and_then(|arc_thing| match *arc_thing {
+                        ArcKwgEither::Node24(ref common_word_kwg) => Some(common_word_kwg.clone()),
+                        _ => None,
+                    }),
+                ),
+            },
+        };
+    }
+    Ok(())
+}
 
-                        let place_tiles =
-                        |board_tiles: &mut [u8],
-                         event: &macondo::GameEvent,
-                         kwg: Option<&kwg::Kwg<kwg::Node22>>,
-                         alphabet: &alphabet::Alphabet,
-                         is_jumbled: bool|
-                         -> Result<bool, Box<dyn std::error::Error>> {
-                            let board_layout = game_config.board_layout();
-                            let dim = board_layout.dim();
-                            if event.row < 0 || event.row >= dim.rows as i32 {
-                                wolges::return_error!(format!("bad row {}", event.row));
-                            }
-                            if event.column < 0 || event.column >= dim.cols as i32 {
-                                wolges::return_error!(format!("bad column {}", event.column));
-                            }
-                            let (strider, lane, idx) = match event.direction() {
-                                macondo::game_event::Direction::Vertical => (
-                                    dim.down(event.column as i8),
-                                    event.column as i8,
-                                    event.row as i8,
-                                ),
-                                macondo::game_event::Direction::Horizontal => (
-                                    dim.across(event.row as i8),
-                                    event.row as i8,
-                                    event.column as i8,
-                                ),
+fn do_it<N: kwg::Node + Send + Sync + 'static>(
+    nc: &std::sync::Arc<async_nats::Client>,
+    noleave_klv: &std::sync::Arc<klv::Klv<kwg::Node22>>,
+    msg_received_instant: std::time::Instant,
+    option_game_id: Option<String>,
+    alloc_reply_chan: impl Fn(String) -> String + Send + 'static,
+    bot_req: Box<macondo::BotRequest>,
+    kwg: std::sync::Arc<kwg::Kwg<N>>,
+    klv: std::sync::Arc<klv::Klv<kwg::Node22>>,
+    game_config: std::sync::Arc<game_config::GameConfig>,
+    tilter: Option<move_filter::Tilt<'static>>,
+    rack_reader: std::sync::Arc<alphabet::AlphabetReader>,
+    play_reader: std::sync::Arc<alphabet::AlphabetReader>,
+    option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
+) {
+    let nc = std::sync::Arc::clone(&nc);
+    let noleave_klv = std::sync::Arc::clone(&noleave_klv);
+    tokio::spawn(async move {
+        let game_state = game_state::GameState::new(&game_config);
+        let move_generator = movegen::KurniaMoveGenerator::new(&game_config);
+        let mut buf = Vec::new();
+        let mut can_sleep = false;
+        let mut should_reply = true;
+        {
+            let mut place_tiles_buf = Vec::new();
+            let mut place_tiles_jumbled_main_tally = Vec::new();
+            let mut place_tiles_jumbled_perpendicular_tally = Vec::new();
+
+            let place_tiles = |board_tiles: &mut [u8],
+                               event: &macondo::GameEvent,
+                               kwg: Option<&kwg::Kwg<N>>,
+                               alphabet: &alphabet::Alphabet,
+                               is_jumbled: bool|
+             -> Result<bool, Box<dyn std::error::Error>> {
+                let board_layout = game_config.board_layout();
+                let dim = board_layout.dim();
+                if event.row < 0 || event.row >= dim.rows as i32 {
+                    wolges::return_error!(format!("bad row {}", event.row));
+                }
+                if event.column < 0 || event.column >= dim.cols as i32 {
+                    wolges::return_error!(format!("bad column {}", event.column));
+                }
+                let (strider, lane, idx) = match event.direction() {
+                    macondo::game_event::Direction::Vertical => (
+                        dim.down(event.column as i8),
+                        event.column as i8,
+                        event.row as i8,
+                    ),
+                    macondo::game_event::Direction::Horizontal => (
+                        dim.across(event.row as i8),
+                        event.row as i8,
+                        event.column as i8,
+                    ),
+                };
+                parse_played_tiles(&play_reader, &event.played_tiles, &mut place_tiles_buf)?;
+                // note: not checking if first move covers star or if it connects
+                if place_tiles_buf.len() < 2 || !place_tiles_buf.iter().any(|&t| t != 0) {
+                    wolges::return_error!("not enough tiles played".into());
+                }
+                if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
+                    wolges::return_error!("has prefix".into());
+                }
+                let end_idx = idx as usize + place_tiles_buf.len();
+                match end_idx.cmp(&(strider.len() as usize)) {
+                    std::cmp::Ordering::Greater => {
+                        wolges::return_error!("out of bounds".into());
+                    }
+                    std::cmp::Ordering::Less => {
+                        if board_tiles[strider.at(end_idx as i8)] != 0 {
+                            wolges::return_error!("has suffix".into());
+                        }
+                    }
+                    std::cmp::Ordering::Equal => {}
+                }
+                for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
+                    let j = strider.at(i);
+                    if tile == 0 {
+                        if board_tiles[j] == 0 {
+                            wolges::return_error!("playing through vacant board".into());
+                        }
+                    } else if board_tiles[j] != 0 {
+                        wolges::return_error!(
+                            "board not vacant for non-played-through tile".into()
+                        );
+                    } else {
+                        board_tiles[j] = tile;
+                    }
+                }
+                if let Some(kwg) = kwg {
+                    let mut p_main = 0; // dawg
+                    let main_tally = &mut place_tiles_jumbled_main_tally;
+                    if is_jumbled {
+                        main_tally.clear();
+                        main_tally.resize(alphabet.len() as usize, 0);
+                    }
+                    for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
+                        let b = board_tiles[strider.at(i)];
+                        if is_jumbled {
+                            main_tally[(b & 0x7f) as usize] += 1;
+                        } else {
+                            p_main = kwg.seek(p_main, b & 0x7f);
+                        }
+                        if tile != 0 {
+                            let perpendicular_strider = match event.direction() {
+                                macondo::game_event::Direction::Vertical => dim.across(i),
+                                macondo::game_event::Direction::Horizontal => dim.down(i),
                             };
-                            parse_played_tiles(&play_reader, &event.played_tiles, &mut place_tiles_buf)?;
-                            // note: not checking if first move covers star or if it connects
-                            if place_tiles_buf.len() < 2 || !place_tiles_buf.iter().any(|&t| t != 0) {
-                                wolges::return_error!("not enough tiles played".into());
+                            let mut j = lane;
+                            while j > 0 && board_tiles[perpendicular_strider.at(j - 1)] != 0 {
+                                j -= 1;
                             }
-                            if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
-                                wolges::return_error!("has prefix".into());
-                            }
-                            let end_idx = idx as usize + place_tiles_buf.len();
-                            match end_idx.cmp(&(strider.len() as usize)) {
-                                std::cmp::Ordering::Greater => {
-                                    wolges::return_error!("out of bounds".into());
-                                }
-                                std::cmp::Ordering::Less => {
-                                    if board_tiles[strider.at(end_idx as i8)] != 0 {
-                                        wolges::return_error!("has suffix".into());
-                                    }
-                                }
-                                std::cmp::Ordering::Equal => {}
-                            }
-                            for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                                let j = strider.at(i);
-                                if tile == 0 {
-                                    if board_tiles[j] == 0 {
-                                        wolges::return_error!(
-                                            "playing through vacant board".into()
-                                        );
-                                    }
-                                } else if board_tiles[j] != 0 {
-                                    wolges::return_error!(
-                                        "board not vacant for non-played-through tile".into()
-                                    );
-                                } else {
-                                    board_tiles[j] = tile;
-                                }
-                            }
-                            if let Some(kwg) = kwg {
-                                let mut p_main = 0; // dawg
-                                let main_tally = &mut place_tiles_jumbled_main_tally;
+                            let perpendicular_strider_len = perpendicular_strider.len();
+                            if j < lane
+                                || (j + 1 < perpendicular_strider_len
+                                    && board_tiles[perpendicular_strider.at(j + 1)] != 0)
+                            {
+                                let mut p_perpendicular = 0;
+                                let perpendicular_tally =
+                                    &mut place_tiles_jumbled_perpendicular_tally;
                                 if is_jumbled {
-                                    main_tally.clear();
-                                    main_tally.resize(alphabet.len() as usize, 0);
+                                    perpendicular_tally.clear();
+                                    perpendicular_tally.resize(alphabet.len() as usize, 0);
                                 }
-                                for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                                    let b = board_tiles[strider.at(i)];
-                                    if is_jumbled {
-                                        main_tally[(b & 0x7f) as usize] += 1;
-                                    } else {
-                                        p_main = kwg.seek(p_main, b & 0x7f);
+                                for j in j..perpendicular_strider_len {
+                                    let perpendicular_tile =
+                                        board_tiles[perpendicular_strider.at(j)];
+                                    if perpendicular_tile == 0 {
+                                        break;
                                     }
-                                    if tile != 0 {
-                                        let perpendicular_strider = match event.direction() {
-                                            macondo::game_event::Direction::Vertical => {
-                                                dim.across(i)
-                                            }
-                                            macondo::game_event::Direction::Horizontal => {
-                                                dim.down(i)
-                                            }
-                                        };
-                                        let mut j = lane;
-                                        while j > 0
-                                            && board_tiles[perpendicular_strider.at(j - 1)] != 0
-                                        {
-                                            j -= 1;
-                                        }
-                                        let perpendicular_strider_len = perpendicular_strider.len();
-                                        if j < lane
-                                            || (j + 1 < perpendicular_strider_len
-                                                && board_tiles[perpendicular_strider.at(j + 1)]
-                                                    != 0)
-                                        {
-                                            let mut p_perpendicular = 0;
-                                            let perpendicular_tally =
-                                                &mut place_tiles_jumbled_perpendicular_tally;
-                                            if is_jumbled {
-                                                perpendicular_tally.clear();
-                                                perpendicular_tally
-                                                    .resize(alphabet.len() as usize, 0);
-                                            }
-                                            for j in j..perpendicular_strider_len {
-                                                let perpendicular_tile =
-                                                    board_tiles[perpendicular_strider.at(j)];
-                                                if perpendicular_tile == 0 {
-                                                    break;
-                                                }
-                                                if is_jumbled {
-                                                    perpendicular_tally
-                                                        [(perpendicular_tile & 0x7f) as usize] += 1;
-                                                } else {
-                                                    p_perpendicular = kwg.seek(
-                                                        p_perpendicular,
-                                                        perpendicular_tile & 0x7f,
-                                                    );
-                                                }
-                                            }
-                                            if if is_jumbled {
-                                                !kwg.accepts_alpha(perpendicular_tally)
-                                            } else {
-                                                p_perpendicular < 0
-                                                    || !kwg[p_perpendicular].accepts()
-                                            } {
-                                                return Ok(false);
-                                            }
-                                        }
+                                    if is_jumbled {
+                                        perpendicular_tally
+                                            [(perpendicular_tile & 0x7f) as usize] += 1;
+                                    } else {
+                                        p_perpendicular =
+                                            kwg.seek(p_perpendicular, perpendicular_tile & 0x7f);
                                     }
                                 }
                                 if if is_jumbled {
-                                    !kwg.accepts_alpha(main_tally)
+                                    !kwg.accepts_alpha(perpendicular_tally)
                                 } else {
-                                    p_main < 0 || !kwg[p_main].accepts()
+                                    p_perpendicular < 0 || !kwg[p_perpendicular].accepts()
                                 } {
                                     return Ok(false);
                                 }
                             }
-                            Ok(true)
-                        };
-
-                        let is_jumbled = match game_config.game_rules() {
-                            game_config::GameRules::Classic => false,
-                            game_config::GameRules::Jumbled => true,
-                        };
-                        let game_event_result = elucubrate(ElucubrateArguments {
-                            bot_req,
-                            tilter,
-                            game_state,
-                            place_tiles,
-                            kwg: &kwg,
-                            game_config: &game_config,
-                            klv: &klv,
-                            noleave_klv: &noleave_klv,
-                            move_generator,
-                            is_jumbled,
-                            rack_reader: &rack_reader,
-                            option_common_word_kwg,
-                        })
-                        .await;
-
-                        let bot_resp = macondo::BotResponse {
-                            response: Some(match game_event_result {
-                                Ok(Some((game_event, ret_can_sleep))) => {
-                                    can_sleep = ret_can_sleep;
-                                    macondo::bot_response::Response::Move(game_event)
-                                }
-                                Ok(None) => {
-                                    should_reply = false;
-                                    macondo::bot_response::Response::Error("".into())
-                                }
-                                Err(err) => macondo::bot_response::Response::Error(err.to_string()),
-                            }),
-                            game_id: option_game_id.clone().unwrap_or("".to_string()), // does not seem to be used by liwords
-                            ..Default::default()
-                        };
-                        if should_reply {
-                            println!("{bot_resp:?}");
-                            bot_resp.encode(&mut buf).unwrap();
-                            println!("{buf:?}");
                         }
                     }
-                    if should_reply {
-                        if can_sleep {
-                            let time_for_move_ms: u128 =
-                                RNG.with(|rng| rng.borrow_mut().random_range(2000..=4000));
-                            let elapsed_ms = msg_received_instant.elapsed().as_millis();
-                            let sleep_for_ms = time_for_move_ms.saturating_sub(elapsed_ms) as u64;
-                            println!("sleeping for {sleep_for_ms}ms");
-                            tokio::time::sleep(tokio::time::Duration::from_millis(sleep_for_ms))
-                                .await;
-                            println!("sending response");
-                        } else {
-                            println!("sending response immediately");
-                        }
-
-                        if let Some(game_id) = option_game_id {
-                            nc.publish(alloc_reply_chan(game_id), buf.into())
-                                .await
-                                .unwrap();
-                        }
+                    if if is_jumbled {
+                        !kwg.accepts_alpha(main_tally)
+                    } else {
+                        p_main < 0 || !kwg[p_main].accepts()
+                    } {
+                        return Ok(false);
                     }
-                });
+                }
+                Ok(true)
+            };
+
+            let is_jumbled = match game_config.game_rules() {
+                game_config::GameRules::Classic => false,
+                game_config::GameRules::Jumbled => true,
+            };
+            let game_event_result = elucubrate(ElucubrateArguments {
+                bot_req,
+                tilter,
+                game_state,
+                place_tiles,
+                kwg: &kwg,
+                game_config: &game_config,
+                klv: &klv,
+                noleave_klv: &noleave_klv,
+                move_generator,
+                is_jumbled,
+                rack_reader: &rack_reader,
+                option_common_word_kwg,
+            })
+            .await;
+
+            let bot_resp = macondo::BotResponse {
+                response: Some(match game_event_result {
+                    Ok(Some((game_event, ret_can_sleep))) => {
+                        can_sleep = ret_can_sleep;
+                        macondo::bot_response::Response::Move(game_event)
+                    }
+                    Ok(None) => {
+                        should_reply = false;
+                        macondo::bot_response::Response::Error("".into())
+                    }
+                    Err(err) => macondo::bot_response::Response::Error(err.to_string()),
+                }),
+                game_id: option_game_id.clone().unwrap_or("".to_string()), // does not seem to be used by liwords
+                ..Default::default()
+            };
+            if should_reply {
+                println!("{bot_resp:?}");
+                bot_resp.encode(&mut buf).unwrap();
+                println!("{buf:?}");
             }
-        };
-    }
-    Ok(())
+        }
+        if should_reply {
+            if can_sleep {
+                let time_for_move_ms: u128 =
+                    RNG.with(|rng| rng.borrow_mut().random_range(2000..=4000));
+                let elapsed_ms = msg_received_instant.elapsed().as_millis();
+                let sleep_for_ms = time_for_move_ms.saturating_sub(elapsed_ms) as u64;
+                println!("sleeping for {sleep_for_ms}ms");
+                tokio::time::sleep(tokio::time::Duration::from_millis(sleep_for_ms)).await;
+                println!("sending response");
+            } else {
+                println!("sending response immediately");
+            }
+
+            if let Some(game_id) = option_game_id {
+                nc.publish(alloc_reply_chan(game_id), buf.into())
+                    .await
+                    .unwrap();
+            }
+        }
+    });
 }
