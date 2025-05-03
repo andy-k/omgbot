@@ -916,54 +916,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 play_reader,
                 option_common_word_kwg,
             }) => match *kwg {
-                ArcKwgEither::Node22(ref kwg) => do_it(
-                    &nc,
-                    &noleave_klv,
+                ArcKwgEither::Node22(ref kwg) => do_it(DoItArguments {
+                    nc: &nc,
+                    noleave_klv: &noleave_klv,
                     msg_received_instant,
                     option_game_id,
                     alloc_reply_chan,
                     bot_req,
-                    kwg.clone(),
+                    kwg: kwg.clone(),
                     klv,
                     game_config,
                     tilter,
                     rack_reader,
                     play_reader,
-                    option_common_word_kwg.and_then(|arc_thing| match *arc_thing {
-                        ArcKwgEither::Node22(ref common_word_kwg) => Some(common_word_kwg.clone()),
-                        _ => None,
+                    option_common_word_kwg: option_common_word_kwg.and_then(|arc_thing| {
+                        match *arc_thing {
+                            ArcKwgEither::Node22(ref common_word_kwg) => {
+                                Some(common_word_kwg.clone())
+                            }
+                            _ => None,
+                        }
                     }),
-                ),
-                ArcKwgEither::Node24(ref kwg) => do_it(
-                    &nc,
-                    &noleave_klv,
+                }),
+                ArcKwgEither::Node24(ref kwg) => do_it(DoItArguments {
+                    nc: &nc,
+                    noleave_klv: &noleave_klv,
                     msg_received_instant,
                     option_game_id,
                     alloc_reply_chan,
                     bot_req,
-                    kwg.clone(),
+                    kwg: kwg.clone(),
                     klv,
                     game_config,
                     tilter,
                     rack_reader,
                     play_reader,
-                    option_common_word_kwg.and_then(|arc_thing| match *arc_thing {
-                        ArcKwgEither::Node24(ref common_word_kwg) => Some(common_word_kwg.clone()),
-                        _ => None,
+                    option_common_word_kwg: option_common_word_kwg.and_then(|arc_thing| {
+                        match *arc_thing {
+                            ArcKwgEither::Node24(ref common_word_kwg) => {
+                                Some(common_word_kwg.clone())
+                            }
+                            _ => None,
+                        }
                     }),
-                ),
+                }),
             },
         };
     }
     Ok(())
 }
 
-fn do_it<N: kwg::Node + Send + Sync + 'static>(
-    nc: &std::sync::Arc<async_nats::Client>,
-    noleave_klv: &std::sync::Arc<klv::Klv<kwg::Node22>>,
+struct DoItArguments<
+    'a,
+    F: Fn(String) -> String + Send + 'static,
+    N: kwg::Node + Send + Sync + 'static,
+> {
+    nc: &'a std::sync::Arc<async_nats::Client>,
+    noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
     msg_received_instant: std::time::Instant,
     option_game_id: Option<String>,
-    alloc_reply_chan: impl Fn(String) -> String + Send + 'static,
+    alloc_reply_chan: F,
     bot_req: Box<macondo::BotRequest>,
     kwg: std::sync::Arc<kwg::Kwg<N>>,
     klv: std::sync::Arc<klv::Klv<kwg::Node22>>,
@@ -972,6 +984,24 @@ fn do_it<N: kwg::Node + Send + Sync + 'static>(
     rack_reader: std::sync::Arc<alphabet::AlphabetReader>,
     play_reader: std::sync::Arc<alphabet::AlphabetReader>,
     option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
+}
+
+fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Sync + 'static>(
+    DoItArguments {
+        nc,
+        noleave_klv,
+        msg_received_instant,
+        option_game_id,
+        alloc_reply_chan,
+        bot_req,
+        kwg,
+        klv,
+        game_config,
+        tilter,
+        rack_reader,
+        play_reader,
+        option_common_word_kwg,
+    }: DoItArguments<'a, F, N>,
 ) {
     let nc = std::sync::Arc::clone(nc);
     let noleave_klv = std::sync::Arc::clone(noleave_klv);
