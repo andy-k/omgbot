@@ -292,6 +292,9 @@ async fn elucubrate<
         macondo::bot_request::BotCode::SimmingBot => (false, OmgBotType::Sim),
         macondo::bot_request::BotCode::HastyPlusEndgameBot => (false, OmgBotType::Unfiltered), // not supported
         macondo::bot_request::BotCode::SimmingInferBot => (false, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::FastMlBot => (false, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::RandomBotWithTemperature => (false, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::SimmingWithMlEvalBot => (false, OmgBotType::Unfiltered), // not supported
         macondo::bot_request::BotCode::Unknown => (false, OmgBotType::Unfiltered), // not supported
     };
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
