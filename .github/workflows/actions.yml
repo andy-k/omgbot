@@ -32,6 +32,11 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
     - name: Version
       run: cargo version
+    - name: Remove -C target-cpu=native on mac
+      if: ${{ matrix.os == 'macos-latest' }}
+      # https://github.com/briansmith/ring/discussions/2528
+      # this is only necessary for github ci.
+      run: rm -v .cargo/config.toml
     - name: Clippy
       run: cargo clippy --release --verbose
     - name: Build
