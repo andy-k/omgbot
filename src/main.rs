@@ -538,6 +538,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("NSF21", Language::Norwegian),
         ("NSF22", Language::Norwegian),
         ("NSF23", Language::Norwegian),
+        ("NSF25", Language::Norwegian),
         ("NSWL20", Language::English),
         ("NWL18", Language::English),
         ("NWL20", Language::English),
