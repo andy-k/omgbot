@@ -16,8 +16,9 @@ use std::fmt::Write;
 use std::str::FromStr;
 
 thread_local! {
-    static RNG: std::cell::RefCell<Box<dyn RngCore>> =
-        std::cell::RefCell::new(Box::new(rand_chacha::ChaCha20Rng::from_os_rng()));
+    static RNG: std::cell::RefCell<Box<dyn rand::Rng>> = std::cell::RefCell::new(Box::new(
+        rand::rngs::ChaCha20Rng::try_from_rng(&mut rand::rngs::SysRng).unwrap(),
+    ));
 }
 
 // TODO remove derive
