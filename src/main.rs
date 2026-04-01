@@ -245,12 +245,7 @@ async fn elucubrate<
     }
 
     // put the bag and shuffle it
-    game_state.bag.0.clear();
-    game_state
-        .bag
-        .0
-        .reserve(available_tally_buf.iter().map(|&x| x as usize).sum());
-    game_state.bag.0.extend(
+    game_state.bag.set_from_iter(
         (0u8..)
             .zip(available_tally_buf.iter())
             .flat_map(|(tile, &count)| std::iter::repeat_n(tile, count as usize)),
@@ -266,7 +261,7 @@ async fn elucubrate<
         None => deprecated_second_went_first(game_history) as u8,
         Some(event) => (determine_player_index(event, game_history) ^ 1) as u8,
     };
-    let pass_or_challenge = game_state.bag.0.is_empty()
+    let pass_or_challenge = game_state.bag.is_empty()
         && game_state.players[game_state.turn as usize ^ 1]
             .rack
             .is_empty();

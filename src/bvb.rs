@@ -445,12 +445,7 @@ fn do_it<N: kwg::Node>(
             }
 
             // fill the bag in sorted order for viewing
-            game_state.bag.0.clear();
-            game_state
-                .bag
-                .0
-                .reserve(available_tally_buf.iter().map(|&x| x as usize).sum());
-            game_state.bag.0.extend(
+            game_state.bag.set_from_iter(
                 (0u8..)
                     .zip(available_tally_buf.iter())
                     .flat_map(|(tile, &count)| std::iter::repeat_n(tile, count as usize)),
@@ -547,7 +542,7 @@ fn do_it<N: kwg::Node>(
                     game_state.play(&game_config, &mut *rng, play)
                 })?;
                 game_state.next_turn(); // for display
-                game_state.bag.0.sort_unstable(); // for display
+                // bag is displayed unsorted
                 display::print_game_state(&game_config, &game_state, None);
             }
             info!("makePlay {move_to_send_buf}");
