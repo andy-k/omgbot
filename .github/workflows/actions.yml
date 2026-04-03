@@ -27,10 +27,10 @@ jobs:
       uses: arduino/setup-protoc@v3
       with:
         repo-token: "${{ secrets.GITHUB_TOKEN }}"
-    - name: Version
+    - name: System Rust version
       run: cargo version
     - uses: dtolnay/rust-toolchain@stable
-    - name: Version
+    - name: Stable Rust version
       run: cargo version
     - name: Remove -C target-cpu=native on mac
       if: ${{ matrix.os == 'macos-latest' }}
