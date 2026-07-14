@@ -404,20 +404,20 @@ async fn elucubrate<
             game_event.set_type(macondo::game_event::Type::TilePlacementMove);
             let board_layout = game_config.board_layout();
             let dim = board_layout.dim();
-            let strider;
-            if *down {
+
+            let strider = if *down {
                 game_event.row = *idx as i32;
                 game_event.column = *lane as i32;
                 game_event.set_direction(macondo::game_event::Direction::Vertical);
                 game_event.position = format!("{}{}", display::column(*lane), idx + 1);
-                strider = dim.down(*lane);
+                dim.down(*lane)
             } else {
                 game_event.row = *lane as i32;
                 game_event.column = *idx as i32;
                 game_event.set_direction(macondo::game_event::Direction::Horizontal);
                 game_event.position = format!("{}{}", lane + 1, display::column(*idx));
-                strider = dim.across(*lane);
-            }
+                dim.across(*lane)
+            };
             let mut s = String::new();
             for (i, &tile) in (*idx..).zip(word.iter()) {
                 let mut shown_tile = tile;
