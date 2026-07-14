@@ -81,7 +81,7 @@ dependencies = [
  "nuid",
  "pin-project",
  "portable-atomic",
- "rand 0.10.1",
+ "rand 0.10.2",
  "regex",
  "ring",
  "rustls-native-certs",
@@ -1196,7 +1196,7 @@ dependencies = [
  "log",
  "prost",
  "prost-build",
- "rand 0.10.1",
+ "rand 0.10.2",
  "reqwest",
  "tokio",
  "wolges",
@@ -1524,9 +1524,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
+checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
 dependencies = [
  "chacha20",
  "getrandom 0.4.2",
@@ -1781,9 +1781,9 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "rustyline"
-version = "18.0.0"
+version = "18.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a990b25f351b25139ddc7f21ee3f6f56f86d6846b74ac8fad3a719a287cd4a0"
+checksum = "53f6a737db68eb1a8ccff86b584b2fc13eca6a7bb6f78ebc7c529547e3ab9684"
 dependencies = [
  "bitflags",
  "cfg-if",
@@ -2908,13 +2908,12 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "num_cpus",
- "rand 0.10.1",
+ "rand 0.10.2",
  "rustyline",
  "rustyline-derive",
  "serde",
  "serde_json",
  "shell-words",
- "tokio",
 ]
 
 [[package]]

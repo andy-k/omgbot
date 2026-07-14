@@ -179,7 +179,7 @@ fn show_all(client: &reqwest::blocking::Client, url: &str, gameid: &str) -> erro
     Ok(())
 }
 
-fn do_it<N: kwg::Node>(
+fn do_it<N: kwg::Node + Sync>(
     url: &str,
     gametag: &str,
     userid: &str,

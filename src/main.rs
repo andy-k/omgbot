@@ -148,7 +148,7 @@ async fn elucubrate<
         &alphabet::Alphabet,
         bool,
     ) -> Result<bool, Box<dyn std::error::Error>>,
-    N: kwg::Node + Send,
+    N: kwg::Node + Send + Sync,
 >(
     ElucubrateArguments {
         bot_req,
@@ -361,19 +361,17 @@ async fn elucubrate<
         },
     };
 
-    move_picker
-        .pick_a_move_async(
-            &mut move_filter,
-            &mut move_generator,
-            board_snapshot,
-            &game_state,
-            if pass_or_challenge {
-                &[]
-            } else {
-                &game_state.current_player().rack
-            },
-        )
-        .await;
+    move_picker.pick_a_move(
+        &mut move_filter,
+        &mut move_generator,
+        board_snapshot,
+        &game_state,
+        if pass_or_challenge {
+            &[]
+        } else {
+            &game_state.current_player().rack
+        },
+    );
     let plays = &mut move_generator.plays;
     let play = &plays[0].play; // assume at least there's always Pass
     println!("Playing: {}", play.fmt(board_snapshot));
