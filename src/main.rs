@@ -1051,7 +1051,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let alloc_reply_chan = |game_id| format!("bot.publish_event.{game_id}");
-    let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
+    let nats_url = std::env::var("OMGBOT_NATS").unwrap_or_else(|_| "localhost".to_string());
+    let nc = std::sync::Arc::new(async_nats::connect(nats_url).await?);
     let mut sub = nc
         .queue_subscribe("bot.commands".to_string(), "bot_queue".to_string())
         .await?;
