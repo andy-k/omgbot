@@ -428,7 +428,9 @@ async fn elucubrate<
             }
 
             game_event.played_tiles = s;
-            game_event.score = *score;
+            // Play scores are premultiplied by equity::SCALE (millipoints); the
+            // GameEvent score is in whole points.
+            game_event.score = equity::descale_score(*score);
         }
     }
     Ok(Some((game_event, would_sleep && can_sleep)))
