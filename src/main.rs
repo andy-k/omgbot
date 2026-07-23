@@ -436,6 +436,271 @@ async fn elucubrate<
     Ok(Some((game_event, would_sleep && can_sleep)))
 }
 
+struct EvaluateArguments<
+    'a,
+    PlaceTilesType: FnMut(
+        &mut [u8],
+        &macondo::GameEvent,
+        Option<&kwg::Kwg<N>>,
+        &alphabet::Alphabet,
+        bool,
+    ) -> Result<bool, Box<dyn std::error::Error>>,
+    N: kwg::Node + Send,
+> {
+    bot_req: Box<macondo::BotRequest>,
+    game_state: game_state::GameState,
+    place_tiles: PlaceTilesType,
+    kwg: &'a std::sync::Arc<kwg::Kwg<N>>,
+    game_config: &'a std::sync::Arc<game_config::GameConfig>,
+    klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
+    move_generator: movegen::KurniaMoveGenerator,
+    is_jumbled: bool,
+    rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
+    play_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
+}
+
+// Evaluate every move the requested user made, mirroring macondo's
+// EvaluationRequest handling: for each of the user's plays, rewind to the
+// position just before it, generate all moves (best equity first), locate the
+// played move, and report equity loss and bingo / star-play flags.
+async fn evaluate<
+    PlaceTilesType: FnMut(
+        &mut [u8],
+        &macondo::GameEvent,
+        Option<&kwg::Kwg<N>>,
+        &alphabet::Alphabet,
+        bool,
+    ) -> Result<bool, Box<dyn std::error::Error>>,
+    N: kwg::Node + Send + Sync,
+>(
+    EvaluateArguments {
+        bot_req,
+        mut game_state,
+        mut place_tiles,
+        kwg,
+        game_config,
+        klv,
+        mut move_generator,
+        is_jumbled,
+        rack_reader,
+        play_reader,
+    }: EvaluateArguments<'_, PlaceTilesType, N>,
+) -> Result<macondo::Evaluation, Box<dyn std::error::Error>> {
+    let kwg: &kwg::Kwg<N> = kwg;
+    let klv: &klv::Klv<kwg::Node22> = klv;
+    let game_config: &game_config::GameConfig = game_config;
+    let rack_reader: &alphabet::AlphabetReader = rack_reader;
+    let play_reader: &alphabet::AlphabetReader = play_reader;
+
+    let game_history = bot_req.game_history.as_ref().unwrap();
+    let user = &bot_req.evaluation_request.as_ref().unwrap().user;
+    let alphabet = game_config.alphabet();
+    let rack_size = game_config.rack_size() as usize;
+
+    game_state.reset();
+    let mut play_eval = Vec::new();
+
+    let mut rack = Vec::new();
+    let mut word_buf = Vec::new();
+    let mut exch_buf = Vec::new();
+    let mut alpha_buf = Vec::new();
+    let mut seen_moves = fash::MyHashSet::default();
+
+    // Rebuild the board incrementally. A placement is only committed when the
+    // next non-phony event arrives, so a placement immediately followed by
+    // PhonyTilesReturned is discarded (never reaches the board).
+    let mut pending = usize::MAX;
+    for (i, event) in game_history.events.iter().enumerate() {
+        if event.r#type() == macondo::game_event::Type::PhonyTilesReturned {
+            pending = usize::MAX;
+            continue;
+        }
+        if pending != usize::MAX {
+            place_tiles(
+                &mut game_state.board_tiles,
+                &game_history.events[pending],
+                None,
+                alphabet,
+                is_jumbled,
+            )?;
+            pending = usize::MAX;
+        }
+
+        let is_move = matches!(
+            event.r#type(),
+            macondo::game_event::Type::TilePlacementMove | macondo::game_event::Type::Exchange
+        );
+        if is_move
+            && game_history.players[determine_player_index(event, game_history)]
+                .nickname
+                .eq_ignore_ascii_case(user)
+        {
+            parse_rack(rack_reader, &event.rack, &mut rack)?;
+            let board_snapshot = &movegen::BoardSnapshot {
+                board_tiles: &game_state.board_tiles,
+                game_config,
+                kwg,
+                klv,
+            };
+            seen_moves.clear();
+            move_generator.gen_moves_filtered(
+                &movegen::GenMovesParams {
+                    board_snapshot,
+                    rack: &rack,
+                    max_gen: 1_000_000,
+                    num_exchanges_by_this_player: 0,
+                    always_include_pass: false,
+                    dynamic_leaves: None,
+                },
+                |_down: bool, _lane: i8, _idx: i8, _word: &[u8], _score: i32| true,
+                |leave_value: i32| leave_value,
+                |equity: equity::Equity, play: &movegen::Play| {
+                    if !is_jumbled {
+                        return true;
+                    }
+                    // Jumbled words are anagrams; dedupe by sorted tiles so the
+                    // ranked list has one entry per distinct play (matches awsm).
+                    match play {
+                        movegen::Play::Exchange { .. } => true,
+                        movegen::Play::Place {
+                            down,
+                            lane,
+                            idx,
+                            word,
+                            score,
+                        } => {
+                            alpha_buf.clear();
+                            alpha_buf.extend_from_slice(word);
+                            alpha_buf.sort_unstable();
+                            seen_moves.insert((
+                                equity.raw(),
+                                movegen::Play::Place {
+                                    down: *down,
+                                    lane: *lane,
+                                    idx: *idx,
+                                    word: alpha_buf[..].into(),
+                                    score: *score,
+                                },
+                            ))
+                        }
+                    }
+                },
+            );
+
+            play_eval.push(eval_played_move(
+                event,
+                &move_generator.plays,
+                rack_size,
+                play_reader,
+                rack_reader,
+                &mut word_buf,
+                &mut exch_buf,
+                &mut alpha_buf,
+            )?);
+        }
+
+        if event.r#type() == macondo::game_event::Type::TilePlacementMove {
+            pending = i;
+        }
+    }
+
+    Ok(macondo::Evaluation { play_eval })
+}
+
+// Given the ranked plays for the position before `event`, compute the five
+// per-move metrics macondo reports. `equity_loss` is the played move's equity
+// minus the best move's equity (<= 0; a phony that never appears in the ranked
+// list scores as 0, so its loss is -top). Star play = the best move beats the
+// second best by more than 10 equity.
+fn eval_played_move(
+    event: &macondo::GameEvent,
+    plays: &[movegen::ValuedMove],
+    rack_size: usize,
+    play_reader: &alphabet::AlphabetReader,
+    rack_reader: &alphabet::AlphabetReader,
+    word_buf: &mut Vec<u8>,
+    exch_buf: &mut Vec<u8>,
+    alpha_buf: &mut Vec<u8>,
+) -> Result<macondo::SingleEvaluation, Box<dyn std::error::Error>> {
+    if plays.is_empty() {
+        return Ok(macondo::SingleEvaluation::default());
+    }
+    let placed_count = |word: &[u8]| word.iter().filter(|&&t| t != 0).count();
+
+    let top_equity = plays[0].equity;
+    let top_is_bingo = matches!(
+        &plays[0].play,
+        movegen::Play::Place { word, .. } if placed_count(word) == rack_size
+    );
+
+    let (found_equity, found_idx, played_is_bingo) = match event.r#type() {
+        macondo::game_event::Type::TilePlacementMove => {
+            parse_played_tiles(play_reader, &event.played_tiles, word_buf)?;
+            let (down, lane, idx) = match event.direction() {
+                macondo::game_event::Direction::Vertical => {
+                    (true, event.column as i8, event.row as i8)
+                }
+                macondo::game_event::Direction::Horizontal => {
+                    (false, event.row as i8, event.column as i8)
+                }
+            };
+            let mut found = (equity::Equity::ZERO, None);
+            for (ix, vm) in plays.iter().enumerate() {
+                if let movegen::Play::Place {
+                    down: d,
+                    lane: l,
+                    idx: x,
+                    word: w,
+                    score: s,
+                } = &vm.play
+                {
+                    // Play scores are premultiplied by equity::SCALE (millipoints);
+                    // the history event score is in whole points.
+                    if *d == down
+                        && *l == lane
+                        && *x == idx
+                        && *s == event.score * equity::SCALE
+                        && w[..] == word_buf[..]
+                    {
+                        found = (vm.equity, Some(ix));
+                        break;
+                    }
+                }
+            }
+            (found.0, found.1, placed_count(word_buf) == rack_size)
+        }
+        macondo::game_event::Type::Exchange => {
+            parse_rack(rack_reader, &event.exchanged, exch_buf)?;
+            exch_buf.sort_unstable();
+            let mut found = (equity::Equity::ZERO, None);
+            for (ix, vm) in plays.iter().enumerate() {
+                if let movegen::Play::Exchange { tiles } = &vm.play {
+                    alpha_buf.clear();
+                    alpha_buf.extend_from_slice(tiles);
+                    alpha_buf.sort_unstable();
+                    if alpha_buf[..] == exch_buf[..] {
+                        found = (vm.equity, Some(ix));
+                        break;
+                    }
+                }
+            }
+            (found.0, found.1, false)
+        }
+        _ => (equity::Equity::ZERO, None, false),
+    };
+
+    let possible_star_play =
+        plays.len() > 1 && top_equity.raw() - plays[1].equity.raw() > 10 * equity::SCALE;
+    Ok(macondo::SingleEvaluation {
+        equity_loss: found_equity.as_f64() - top_equity.as_f64(),
+        win_pct_loss: 0.0,
+        missed_bingo: top_is_bingo && !played_is_bingo,
+        possible_star_play,
+        missed_star_play: possible_star_play && found_idx.is_some_and(|ix| ix > 0),
+        top_is_bingo,
+    })
+}
+
 enum Language {
     Catalan,
     English,
@@ -786,13 +1051,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let alloc_reply_chan = |game_id| format!("bot.publish_event.{game_id}");
-    let nc = std::sync::Arc::new(async_nats::connect("localhost").await?);
+    let nats_url = std::env::var("OMGBOT_NATS").unwrap_or_else(|_| "localhost".to_string());
+    let nc = std::sync::Arc::new(async_nats::connect(nats_url).await?);
     let mut sub = nc
         .queue_subscribe("bot.commands".to_string(), "bot_queue".to_string())
         .await?;
     println!("ready");
     while let Some(msg) = sub.next().await {
         let msg_received_instant = std::time::Instant::now();
+        // When the request came in via NATS request/reply (as the analysis tool
+        // does), answer on the reply inbox; otherwise fall back to publishing on
+        // the per-game channel liwords listens on.
+        let reply = msg.reply.clone();
         let bot_req = macondo::BotRequest::decode(&*msg.payload);
         // allocates a clone.
         let option_game_id = bot_req
@@ -903,7 +1173,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     bot_resp.encode(&mut buf)?;
                     println!("{buf:?}");
                 }
-                if let Some(game_id) = option_game_id {
+                if let Some(reply) = &reply {
+                    nc.publish(reply.clone(), buf.into()).await.unwrap();
+                } else if let Some(game_id) = option_game_id {
                     nc.publish(alloc_reply_chan(game_id), buf.into())
                         .await
                         .unwrap();
@@ -925,6 +1197,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     msg_received_instant,
                     option_game_id,
                     alloc_reply_chan,
+                    reply: reply.clone(),
                     bot_req,
                     kwg: kwg.clone(),
                     klv,
@@ -947,6 +1220,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     msg_received_instant,
                     option_game_id,
                     alloc_reply_chan,
+                    reply: reply.clone(),
                     bot_req,
                     kwg: kwg.clone(),
                     klv,
@@ -978,6 +1252,7 @@ struct DoItArguments<
     noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
     msg_received_instant: std::time::Instant,
     option_game_id: Option<String>,
+    reply: Option<async_nats::Subject>,
     alloc_reply_chan: F,
     bot_req: Box<macondo::BotRequest>,
     kwg: std::sync::Arc<kwg::Kwg<N>>,
@@ -995,6 +1270,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
         noleave_klv,
         msg_received_instant,
         option_game_id,
+        reply,
         alloc_reply_chan,
         bot_req,
         kwg,
@@ -1153,36 +1429,63 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 game_config::GameRules::Classic => false,
                 game_config::GameRules::Jumbled => true,
             };
-            let game_event_result = elucubrate(ElucubrateArguments {
-                bot_req,
-                tilter,
-                game_state,
-                place_tiles,
-                kwg: &kwg,
-                game_config: &game_config,
-                klv: &klv,
-                noleave_klv: &noleave_klv,
-                move_generator,
-                is_jumbled,
-                rack_reader: &rack_reader,
-                option_common_word_kwg,
-            })
-            .await;
+            let bot_resp = if bot_req.evaluation_request.is_some() {
+                // Evaluation requests never sleep and always reply.
+                can_sleep = false;
+                let eval_result = evaluate(EvaluateArguments {
+                    bot_req,
+                    game_state,
+                    place_tiles,
+                    kwg: &kwg,
+                    game_config: &game_config,
+                    klv: &klv,
+                    move_generator,
+                    is_jumbled,
+                    rack_reader: &rack_reader,
+                    play_reader: &play_reader,
+                })
+                .await;
+                macondo::BotResponse {
+                    response: match &eval_result {
+                        Err(err) => Some(macondo::bot_response::Response::Error(err.to_string())),
+                        Ok(_) => None,
+                    },
+                    eval: eval_result.ok(),
+                    game_id: option_game_id.clone().unwrap_or("".to_string()),
+                    ..Default::default()
+                }
+            } else {
+                let game_event_result = elucubrate(ElucubrateArguments {
+                    bot_req,
+                    tilter,
+                    game_state,
+                    place_tiles,
+                    kwg: &kwg,
+                    game_config: &game_config,
+                    klv: &klv,
+                    noleave_klv: &noleave_klv,
+                    move_generator,
+                    is_jumbled,
+                    rack_reader: &rack_reader,
+                    option_common_word_kwg,
+                })
+                .await;
 
-            let bot_resp = macondo::BotResponse {
-                response: Some(match game_event_result {
-                    Ok(Some((game_event, ret_can_sleep))) => {
-                        can_sleep = ret_can_sleep;
-                        macondo::bot_response::Response::Move(game_event)
-                    }
-                    Ok(None) => {
-                        should_reply = false;
-                        macondo::bot_response::Response::Error("".into())
-                    }
-                    Err(err) => macondo::bot_response::Response::Error(err.to_string()),
-                }),
-                game_id: option_game_id.clone().unwrap_or("".to_string()), // does not seem to be used by liwords
-                ..Default::default()
+                macondo::BotResponse {
+                    response: Some(match game_event_result {
+                        Ok(Some((game_event, ret_can_sleep))) => {
+                            can_sleep = ret_can_sleep;
+                            macondo::bot_response::Response::Move(game_event)
+                        }
+                        Ok(None) => {
+                            should_reply = false;
+                            macondo::bot_response::Response::Error("".into())
+                        }
+                        Err(err) => macondo::bot_response::Response::Error(err.to_string()),
+                    }),
+                    game_id: option_game_id.clone().unwrap_or("".to_string()), // does not seem to be used by liwords
+                    ..Default::default()
+                }
             };
             if should_reply {
                 println!("{bot_resp:?}");
@@ -1203,7 +1506,9 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 println!("sending response immediately");
             }
 
-            if let Some(game_id) = option_game_id {
+            if let Some(reply) = reply {
+                nc.publish(reply, buf.into()).await.unwrap();
+            } else if let Some(game_id) = option_game_id {
                 nc.publish(alloc_reply_chan(game_id), buf.into())
                     .await
                     .unwrap();
