@@ -975,56 +975,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     let mut common_word_kwgs = std::collections::HashMap::new();
-    if let Some(ecwl_kwg) = kwgs.get("ECWL") {
+    for (list_name, list_language) in [("ECWL", Language::English), ("CGL", Language::German)] {
+        let Some(list_kwg) = kwgs.get(list_name) else {
+            continue;
+        };
         let mut v1 = Vec::<bites::Bites>::new();
-        each_word(ecwl_kwg, |w| v1.push(w.into()));
+        each_word(list_kwg, |w| v1.push(w.into()));
         let mut v2 = Vec::<bites::Bites>::new();
         for (lexicon, language) in lexicons.iter() {
-            if *lexicon != "ECWL" && matches!(language, Language::English) {
-                v2.clear();
-                let mut v1p = 0;
-                let kwg = kwgs.get(*lexicon).unwrap();
-                each_word(kwg, |w| {
-                    while v1p < v1.len() {
-                        match v1[v1p][..].cmp(w) {
-                            std::cmp::Ordering::Greater => break,
-                            std::cmp::Ordering::Less => v1p += 1,
-                            std::cmp::Ordering::Equal => {
-                                v2.push(w.into());
-                                v1p += 1;
-                                break;
-                            }
-                        }
-                    }
-                });
-                common_word_kwgs.insert(
-                    lexicon.to_string(),
-                    std::sync::Arc::new(match **kwg {
-                        ArcKwgEither::Node22(_) => ArcKwgEither::Node22(std::sync::Arc::new(
-                            kwg::Kwg::from_bytes_alloc(&build::build(
-                                build::BuildContent::Gaddawg,
-                                build::BuildLayout::Wolges,
-                                &v2,
-                            )?),
-                        )),
-                        ArcKwgEither::Node24(_) => ArcKwgEither::Node24(std::sync::Arc::new(
-                            kwg::Kwg::from_bytes_alloc(&build::build_big(
-                                build::BuildContent::Gaddawg,
-                                build::BuildLayout::Wolges,
-                                &v2,
-                            )?),
-                        )),
-                    }),
-                );
-            }
-        }
-    }
-    if let Some(cgl_kwg) = kwgs.get("CGL") {
-        let mut v1 = Vec::<bites::Bites>::new();
-        each_word(cgl_kwg, |w| v1.push(w.into()));
-        let mut v2 = Vec::<bites::Bites>::new();
-        for (lexicon, language) in lexicons.iter() {
-            if *lexicon != "CGL" && matches!(language, Language::German) {
+            if *lexicon != list_name
+                && std::mem::discriminant(language) == std::mem::discriminant(&list_language)
+            {
                 v2.clear();
                 let mut v1p = 0;
                 let kwg = kwgs.get(*lexicon).unwrap();
