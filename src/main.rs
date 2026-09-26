@@ -283,16 +283,16 @@ async fn elucubrate<
     let (word_list, effective_bot_type) = match bot_req.bot_type() {
         macondo::bot_request::BotCode::HastyBot => (WordList::Full, OmgBotType::Unfiltered),
         macondo::bot_request::BotCode::Level1CommonWordBot => {
-            (WordList::CommonWord, OmgBotType::Tilt(1))
-        }
-        macondo::bot_request::BotCode::Level2CommonWordBot => {
             (WordList::CommonWord, OmgBotType::Tilt(2))
         }
-        macondo::bot_request::BotCode::Level3CommonWordBot => {
+        macondo::bot_request::BotCode::Level2CommonWordBot => {
             (WordList::CommonWord, OmgBotType::Tilt(3))
         }
-        macondo::bot_request::BotCode::Level4CommonWordBot => {
+        macondo::bot_request::BotCode::Level3CommonWordBot => {
             (WordList::CommonWord, OmgBotType::Tilt(4))
+        }
+        macondo::bot_request::BotCode::Level4CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Unfiltered)
         }
         macondo::bot_request::BotCode::Level1Probabilistic => (WordList::Full, OmgBotType::Tilt(1)),
         macondo::bot_request::BotCode::Level2Probabilistic => (WordList::Full, OmgBotType::Tilt(2)),
