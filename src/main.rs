@@ -273,29 +273,51 @@ async fn elucubrate<
         Tilt(i8),
         Sim,
     }
-    let (use_common_word, effective_bot_type) = match bot_req.bot_type() {
-        macondo::bot_request::BotCode::HastyBot => (false, OmgBotType::Unfiltered),
-        macondo::bot_request::BotCode::Level1CommonWordBot => (true, OmgBotType::Tilt(1)),
-        macondo::bot_request::BotCode::Level2CommonWordBot => (true, OmgBotType::Tilt(2)),
-        macondo::bot_request::BotCode::Level3CommonWordBot => (true, OmgBotType::Tilt(3)),
-        macondo::bot_request::BotCode::Level4CommonWordBot => (true, OmgBotType::Tilt(4)),
-        macondo::bot_request::BotCode::Level1Probabilistic => (false, OmgBotType::Tilt(1)),
-        macondo::bot_request::BotCode::Level2Probabilistic => (false, OmgBotType::Tilt(2)),
-        macondo::bot_request::BotCode::Level3Probabilistic => (false, OmgBotType::Tilt(3)),
-        macondo::bot_request::BotCode::Level4Probabilistic => (false, OmgBotType::Tilt(4)),
-        macondo::bot_request::BotCode::Level5Probabilistic => (false, OmgBotType::Tilt(5)),
-        macondo::bot_request::BotCode::NoLeaveBot => (false, OmgBotType::Unfiltered),
-        macondo::bot_request::BotCode::SimmingBot => (false, OmgBotType::Sim),
-        macondo::bot_request::BotCode::HastyPlusEndgameBot => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::SimmingInferBot => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::FastMlBot => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::RandomBotWithTemperature => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::SimmingWithMlEvalBot => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::SimmingBotNoEg => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::SimmingInferBotNoEg => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::CustomBot => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::CommonWordPlusTwosBot => (false, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::Unknown => (false, OmgBotType::Unfiltered), // not supported
+    enum WordList {
+        Full,
+        CommonWord,
+    }
+    let (word_list, effective_bot_type) = match bot_req.bot_type() {
+        macondo::bot_request::BotCode::HastyBot => (WordList::Full, OmgBotType::Unfiltered),
+        macondo::bot_request::BotCode::Level1CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Tilt(1))
+        }
+        macondo::bot_request::BotCode::Level2CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Tilt(2))
+        }
+        macondo::bot_request::BotCode::Level3CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Tilt(3))
+        }
+        macondo::bot_request::BotCode::Level4CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Tilt(4))
+        }
+        macondo::bot_request::BotCode::Level1Probabilistic => (WordList::Full, OmgBotType::Tilt(1)),
+        macondo::bot_request::BotCode::Level2Probabilistic => (WordList::Full, OmgBotType::Tilt(2)),
+        macondo::bot_request::BotCode::Level3Probabilistic => (WordList::Full, OmgBotType::Tilt(3)),
+        macondo::bot_request::BotCode::Level4Probabilistic => (WordList::Full, OmgBotType::Tilt(4)),
+        macondo::bot_request::BotCode::Level5Probabilistic => (WordList::Full, OmgBotType::Tilt(5)),
+        macondo::bot_request::BotCode::NoLeaveBot => (WordList::Full, OmgBotType::Unfiltered),
+        macondo::bot_request::BotCode::SimmingBot => (WordList::Full, OmgBotType::Sim),
+        macondo::bot_request::BotCode::HastyPlusEndgameBot => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::SimmingInferBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::FastMlBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::RandomBotWithTemperature => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::SimmingWithMlEvalBot => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::SimmingBotNoEg => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::SimmingInferBotNoEg => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::CustomBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::CommonWordPlusTwosBot => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::Unknown => (WordList::Full, OmgBotType::Unfiltered), // not supported
     };
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
         OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
@@ -321,14 +343,15 @@ async fn elucubrate<
             return Ok(None);
         }
     };
-    let used_kwg = if use_common_word {
-        if option_common_word_kwg.is_none() {
-            println!("common_word unavailable, so not responding");
-            return Ok(None);
+    let used_kwg = match word_list {
+        WordList::Full => kwg,
+        WordList::CommonWord => {
+            if option_common_word_kwg.is_none() {
+                println!("common_word unavailable, so not responding");
+                return Ok(None);
+            }
+            option_common_word_kwg.as_ref().unwrap()
         }
-        option_common_word_kwg.as_ref().unwrap()
-    } else {
-        kwg
     };
 
     let board_layout = game_config.board_layout();
