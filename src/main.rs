@@ -294,6 +294,7 @@ async fn elucubrate<
         macondo::bot_request::BotCode::SimmingBotNoEg => (false, OmgBotType::Unfiltered), // not supported
         macondo::bot_request::BotCode::SimmingInferBotNoEg => (false, OmgBotType::Unfiltered), // not supported
         macondo::bot_request::BotCode::CustomBot => (false, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::CommonWordPlusTwosBot => (false, OmgBotType::Unfiltered), // not supported
         macondo::bot_request::BotCode::Unknown => (false, OmgBotType::Unfiltered), // not supported
     };
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
