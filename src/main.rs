@@ -588,16 +588,16 @@ async fn evaluate<
                 },
             );
 
-            play_eval.push(eval_played_move(
+            play_eval.push(eval_played_move(EvalPlayedMoveArguments {
                 event,
-                &move_generator.plays,
+                plays: &move_generator.plays,
                 rack_size,
                 play_reader,
                 rack_reader,
-                &mut word_buf,
-                &mut exch_buf,
-                &mut alpha_buf,
-            )?);
+                word_buf: &mut word_buf,
+                exch_buf: &mut exch_buf,
+                alpha_buf: &mut alpha_buf,
+            })?);
         }
 
         if event.r#type() == macondo::game_event::Type::TilePlacementMove {
@@ -608,20 +608,33 @@ async fn evaluate<
     Ok(macondo::Evaluation { play_eval })
 }
 
+struct EvalPlayedMoveArguments<'a> {
+    event: &'a macondo::GameEvent,
+    plays: &'a [movegen::ValuedMove],
+    rack_size: usize,
+    play_reader: &'a alphabet::AlphabetReader,
+    rack_reader: &'a alphabet::AlphabetReader,
+    word_buf: &'a mut Vec<u8>,
+    exch_buf: &'a mut Vec<u8>,
+    alpha_buf: &'a mut Vec<u8>,
+}
+
 // Given the ranked plays for the position before `event`, compute the five
 // per-move metrics macondo reports. `equity_loss` is the played move's equity
 // minus the best move's equity (<= 0; a phony that never appears in the ranked
 // list scores as 0, so its loss is -top). Star play = the best move beats the
 // second best by more than 10 equity.
 fn eval_played_move(
-    event: &macondo::GameEvent,
-    plays: &[movegen::ValuedMove],
-    rack_size: usize,
-    play_reader: &alphabet::AlphabetReader,
-    rack_reader: &alphabet::AlphabetReader,
-    word_buf: &mut Vec<u8>,
-    exch_buf: &mut Vec<u8>,
-    alpha_buf: &mut Vec<u8>,
+    EvalPlayedMoveArguments {
+        event,
+        plays,
+        rack_size,
+        play_reader,
+        rack_reader,
+        word_buf,
+        exch_buf,
+        alpha_buf,
+    }: EvalPlayedMoveArguments<'_>,
 ) -> Result<macondo::SingleEvaluation, Box<dyn std::error::Error>> {
     if plays.is_empty() {
         return Ok(macondo::SingleEvaluation::default());
