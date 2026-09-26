@@ -1453,7 +1453,6 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                     },
                     eval: eval_result.ok(),
                     game_id: option_game_id.clone().unwrap_or("".to_string()),
-                    ..Default::default()
                 }
             } else {
                 let game_event_result = elucubrate(ElucubrateArguments {
