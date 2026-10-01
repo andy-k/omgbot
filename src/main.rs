@@ -338,7 +338,16 @@ async fn elucubrate<
         ),
         OmgBotType::Sim if !is_jumbled => (
             move_filter::GenMoves::Unfiltered,
-            move_picker::MovePicker::Simmer(move_picker::Simmer::new(game_config, kwg, klv)),
+            move_picker::MovePicker::Simmer(move_picker::Simmer::new(
+                game_config,
+                kwg,
+                klv,
+                move_picker::SimmerParams {
+                    num_sim_iters: move_picker::DEFAULT_NUM_SIM_ITERS,
+                    sim_threads: 1,
+                    win_pct_table: None,
+                },
+            )),
             false,
         ),
         _ => {
@@ -389,6 +398,8 @@ async fn elucubrate<
         board_tiles: &game_state.board_tiles,
         game_config,
         kwg: used_kwg,
+        anagrams: None,
+        rack_lengths: None,
         klv: match bot_req.bot_type() {
             macondo::bot_request::BotCode::NoLeaveBot => noleave_klv,
             _ => klv,
@@ -574,50 +585,52 @@ async fn evaluate<
                 board_tiles: &game_state.board_tiles,
                 game_config,
                 kwg,
+                anagrams: None,
+                rack_lengths: None,
                 klv,
             };
             seen_moves.clear();
+            // Jumbled words are anagrams; dedup by sorted tiles so the
+            // ranked list has one entry per distinct play (matches awsm).
+            let mut dedup = |equity: equity::Equity, play: &movegen::Play| match play {
+                movegen::Play::Exchange { .. } => true,
+                movegen::Play::Place {
+                    down,
+                    lane,
+                    idx,
+                    word,
+                    score,
+                } => {
+                    alpha_buf.clear();
+                    alpha_buf.extend_from_slice(word);
+                    alpha_buf.sort_unstable();
+                    seen_moves.insert((
+                        equity.raw(),
+                        movegen::Play::Place {
+                            down: *down,
+                            lane: *lane,
+                            idx: *idx,
+                            word: alpha_buf[..].into(),
+                            score: *score,
+                        },
+                    ))
+                }
+            };
             move_generator.gen_moves_filtered(
                 &movegen::GenMovesParams {
                     board_snapshot,
                     rack: &rack,
                     max_gen: 1_000_000,
                     num_exchanges_by_this_player: 0,
-                    always_include_pass: false,
+                    pass_policy: movegen::PassPolicy::OnlyWhenForced,
                     dynamic_leaves: None,
                 },
-                |_down: bool, _lane: i8, _idx: i8, _word: &[u8], _score: i32| true,
-                |leave_value: i32| leave_value,
-                |equity: equity::Equity, play: &movegen::Play| {
-                    if !is_jumbled {
-                        return true;
-                    }
-                    // Jumbled words are anagrams; dedupe by sorted tiles so the
-                    // ranked list has one entry per distinct play (matches awsm).
-                    match play {
-                        movegen::Play::Exchange { .. } => true,
-                        movegen::Play::Place {
-                            down,
-                            lane,
-                            idx,
-                            word,
-                            score,
-                        } => {
-                            alpha_buf.clear();
-                            alpha_buf.extend_from_slice(word);
-                            alpha_buf.sort_unstable();
-                            seen_moves.insert((
-                                equity.raw(),
-                                movegen::Play::Place {
-                                    down: *down,
-                                    lane: *lane,
-                                    idx: *idx,
-                                    word: alpha_buf[..].into(),
-                                    score: *score,
-                                },
-                            ))
-                        }
-                    }
+                movegen::PlacePredicate::AcceptAll,
+                klv::AdjustLeave::Identity,
+                if is_jumbled {
+                    movegen::EquityPredicate::Dyn(&mut dedup)
+                } else {
+                    movegen::EquityPredicate::AcceptAll
                 },
             );
 
@@ -1056,6 +1069,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 kwg::Kwg::from_bytes_alloc(&build::build(
                                     build::BuildContent::Gaddawg,
                                     build::BuildLayout::Wolges,
+                                    build::BuildOrder::Sorted,
                                     words,
                                 )?),
                             )),
@@ -1063,6 +1077,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 kwg::Kwg::from_bytes_alloc(&build::build_big(
                                     build::BuildContent::Gaddawg,
                                     build::BuildLayout::Wolges,
+                                    build::BuildOrder::Sorted,
                                     words,
                                 )?),
                             )),

@@ -489,6 +489,8 @@ fn do_it<N: kwg::Node + Sync>(
                     board_tiles: &game_state.board_tiles,
                     game_config: &game_config,
                     kwg: &kwg,
+                    anagrams: None,
+                    rack_lengths: None,
                     klv: &klv,
                 };
                 move_picker.pick_a_move(
