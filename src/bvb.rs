@@ -338,6 +338,9 @@ fn do_it<N: kwg::Node + Sync>(
                             return Err("too many tokens".into());
                         }
                         parse_rack(&rack_reader, my_rack, &mut rack)?;
+                        if rack.len() > game_config.rack_size() as usize {
+                            return Err(format!("rack {my_rack:?} is too long").into());
+                        }
                         (true, score0, score1)
                     }
                     Some("f") => {

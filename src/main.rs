@@ -583,6 +583,9 @@ async fn evaluate<
                 .eq_ignore_ascii_case(user)
         {
             parse_rack(rack_reader, &event.rack, &mut rack)?;
+            if rack.len() > rack_size {
+                wolges::return_error!(format!("rack {:?} is too long", event.rack));
+            }
             let board_snapshot = &movegen::BoardSnapshot {
                 board_tiles: &game_state.board_tiles,
                 game_config,
