@@ -184,6 +184,7 @@ fn do_it<N: kwg::Node + Sync>(
     gametag: &str,
     userid: &str,
     num_games: usize,
+    lean: bool,
 ) -> error::Returns<()> {
     let mut total_win = 0.0f64;
     let mut total_loss = 0.0f64;
@@ -199,6 +200,7 @@ fn do_it<N: kwg::Node + Sync>(
         let rack_reader = alphabet::AlphabetReader::new_for_racks(alphabet);
         let play_reader = alphabet::AlphabetReader::new_for_plays(alphabet);
         let kwg = kwg::Kwg::<N>::from_bytes_alloc(&std::fs::read("CSW21.kwg")?)?;
+        let arm_tables = anagrams::ArmTables::build(&kwg, &game_config, lean)?;
         let alphabet_len_without_blank = alphabet.len() - 1;
         let mut available_tally_buf = Vec::new();
         let mut game_state = game_state::GameState::new(&game_config);
@@ -492,8 +494,8 @@ fn do_it<N: kwg::Node + Sync>(
                     board_tiles: &game_state.board_tiles,
                     game_config: &game_config,
                     kwg: &kwg,
-                    anagrams: None,
-                    rack_lengths: None,
+                    anagrams: arm_tables.anagrams(),
+                    rack_lengths: arm_tables.rack_lengths(),
                     klv: &klv,
                 };
                 move_picker.pick_a_move(
@@ -586,20 +588,24 @@ fn do_it<N: kwg::Node + Sync>(
     Ok(())
 }
 
+#[derive(clap::Parser)]
+#[command(about = "play a bot against another through a game server")]
+struct Cli {
+    #[arg(help = "the server, such as http://127.0.0.1:8001")]
+    url: String,
+    #[arg(help = "the game's tag")]
+    gametag: String,
+    #[arg(value_parser = ["0", "1"], help = "the user id, 0 or 1")]
+    userid: String,
+    #[arg(help = "the number of games")]
+    num: usize,
+    #[arg(long, help = "generate with the lean arm")]
+    lean: bool,
+}
+
 fn main() -> error::Returns<()> {
     env_logger::init();
 
-    let args = std::env::args().collect::<Vec<_>>();
-    if args.len() <= 4 || (args[3] != "0" && args[3] != "1") {
-        println!(
-            "args: http://127.0.0.1:8001 gametag userid num
-  userid
-    0 or 1
-  num
-    number of games"
-        );
-        Ok(())
-    } else {
-        do_it::<kwg::Node22>(&args[1], &args[2], &args[3], usize::from_str(&args[4])?)
-    }
+    let cli: Cli = clap::Parser::parse();
+    do_it::<kwg::Node22>(&cli.url, &cli.gametag, &cli.userid, cli.num, cli.lean)
 }
