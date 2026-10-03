@@ -773,8 +773,16 @@ enum Language {
     Spanish,
 }
 
+#[derive(clap::Parser)]
+#[command(about = "answer the bot requests that come over nats")]
+struct Cli {
+    #[arg(long, default_value = "localhost", help = "the nats server")]
+    nats: String,
+}
+
 #[tokio::main]
 async fn main() -> error::Returns<()> {
+    let cli: Cli = clap::Parser::parse();
     let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES)?);
     // one per supported config
     let catalan_game_config = std::sync::Arc::new(game_config::make_catalan_game_config());
@@ -1091,8 +1099,7 @@ async fn main() -> error::Returns<()> {
     }
 
     let alloc_reply_chan = |game_id| format!("bot.publish_event.{game_id}");
-    let nats_url = std::env::var("OMGBOT_NATS").unwrap_or_else(|_| "localhost".to_string());
-    let nc = std::sync::Arc::new(async_nats::connect(nats_url).await?);
+    let nc = std::sync::Arc::new(async_nats::connect(cli.nats).await?);
     let mut sub = nc
         .queue_subscribe("bot.commands".to_string(), "bot_queue".to_string())
         .await?;

@@ -1211,6 +1211,7 @@ name = "omgbot"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "clap",
  "env_logger",
  "futures-util",
  "log",
