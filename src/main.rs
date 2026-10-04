@@ -766,6 +766,7 @@ fn eval_played_move(
     })
 }
 
+#[derive(Clone, Copy)]
 enum Language {
     Catalan,
     English,
@@ -774,6 +775,175 @@ enum Language {
     Norwegian,
     Polish,
     Spanish,
+}
+
+// what a lexicon's requests read, from the files named after it, read the first
+// time a request names the lexicon
+struct LexiconFiles {
+    tried: std::collections::HashSet<String>,
+    klvs: std::collections::HashMap<String, std::sync::Arc<klv::Klv<kwg::Node22>>>,
+    super_klvs: std::collections::HashMap<String, std::sync::Arc<klv::Klv<kwg::Node22>>>,
+    kwgs: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
+    tilters: std::collections::HashMap<String, move_filter::Tilt<'static>>,
+    kads: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
+    common_word_kwgs: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
+    common_word_plus_twos_kwgs: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
+}
+
+impl LexiconFiles {
+    // the word list whose common words a lexicon of this language is cut to
+    #[inline(always)]
+    fn common_word_list(language: Language) -> Option<&'static str> {
+        match language {
+            Language::English => Some("ECWL"),
+            Language::German => Some("CGL"),
+            _ => None,
+        }
+    }
+
+    fn read(
+        &mut self,
+        lexicon: &str,
+        language: Language,
+        game_config: &game_config::GameConfig,
+    ) -> error::Returns<()> {
+        if !self.tried.insert(lexicon.to_string()) {
+            return Ok(());
+        }
+        match std::fs::read(format!("{lexicon}.klv2")) {
+            Ok(klv_bytes) => {
+                let klv_arc = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&klv_bytes)?);
+                match std::fs::read(format!("super-{lexicon}.klv2")) {
+                    Ok(super_klv_bytes) => {
+                        let super_klv_arc =
+                            std::sync::Arc::new(klv::Klv::from_bytes_alloc(&super_klv_bytes)?);
+                        self.super_klvs.insert(lexicon.to_string(), super_klv_arc);
+                    }
+                    Err(_) => {
+                        self.super_klvs
+                            .insert(lexicon.to_string(), std::sync::Arc::clone(&klv_arc));
+                    }
+                }
+                self.klvs.insert(lexicon.to_string(), klv_arc);
+            }
+            Err(err) => {
+                eprintln!("warning: {lexicon}.klv2: {err}");
+            }
+        }
+        match std::fs::read(format!("{lexicon}.kwg")) {
+            Ok(kwg_bytes) => {
+                let kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kwg_bytes)?);
+                self.tilters.insert(
+                    lexicon.to_string(),
+                    move_filter::Tilt::new(
+                        game_config,
+                        &kwg,
+                        move_filter::Tilt::length_importances(),
+                    ),
+                );
+                self.kwgs.insert(
+                    lexicon.to_string(),
+                    std::sync::Arc::new(ArcKwgEither::Node22(kwg)),
+                );
+            }
+            Err(err_kwg) => match std::fs::read(format!("{lexicon}.kbwg")) {
+                Ok(kbwg_bytes) => {
+                    let kbwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kbwg_bytes)?);
+                    self.tilters.insert(
+                        lexicon.to_string(),
+                        move_filter::Tilt::new(
+                            game_config,
+                            &kbwg,
+                            move_filter::Tilt::length_importances(),
+                        ),
+                    );
+                    self.kwgs.insert(
+                        lexicon.to_string(),
+                        std::sync::Arc::new(ArcKwgEither::Node24(kbwg)),
+                    );
+                }
+                Err(err_kbwg) => {
+                    eprintln!("warning: {lexicon}.kwg: {err_kwg}");
+                    eprintln!("warning: {lexicon}.kbwg: {err_kbwg}");
+                }
+            },
+        }
+        match std::fs::read(format!("{lexicon}.kad")) {
+            Ok(kad_bytes) => {
+                let kad_arc = ArcKwgEither::Node22(std::sync::Arc::new(
+                    kwg::Kwg::from_bytes_alloc(&kad_bytes)?,
+                ));
+                self.kads
+                    .insert(lexicon.to_string(), std::sync::Arc::new(kad_arc));
+            }
+            Err(err) => {
+                eprintln!("warning: {lexicon}.kad: {err}");
+            }
+        }
+        let Some(list_name) = Self::common_word_list(language) else {
+            return Ok(());
+        };
+        if lexicon == list_name {
+            return Ok(());
+        }
+        self.read(list_name, language, game_config)?;
+        let (Some(list_kwg), Some(kwg)) = (self.kwgs.get(list_name), self.kwgs.get(lexicon)) else {
+            return Ok(());
+        };
+        let mut v1 = Vec::<bites::Bites>::new();
+        each_word(list_kwg, |w| v1.push(w.into()));
+        let mut v2 = Vec::<bites::Bites>::new();
+        let mut v3 = Vec::<bites::Bites>::new();
+        let mut v1p = 0;
+        each_word(kwg, |w| {
+            let mut in_list = false;
+            while v1p < v1.len() {
+                match v1[v1p][..].cmp(w) {
+                    std::cmp::Ordering::Greater => break,
+                    std::cmp::Ordering::Less => v1p += 1,
+                    std::cmp::Ordering::Equal => {
+                        in_list = true;
+                        v1p += 1;
+                        break;
+                    }
+                }
+            }
+            if in_list {
+                v2.push(w.into());
+            }
+            if in_list || w.len() <= 2 {
+                v3.push(w.into());
+            }
+        });
+        let kwg = std::sync::Arc::clone(kwg);
+        for (kwgs_out, words) in [
+            (&mut self.common_word_kwgs, &v2),
+            (&mut self.common_word_plus_twos_kwgs, &v3),
+        ] {
+            kwgs_out.insert(
+                lexicon.to_string(),
+                std::sync::Arc::new(match *kwg {
+                    ArcKwgEither::Node22(_) => ArcKwgEither::Node22(std::sync::Arc::new(
+                        kwg::Kwg::from_bytes_alloc(&build::build(
+                            build::BuildContent::Gaddawg,
+                            build::BuildLayout::Wolges,
+                            build::BuildOrder::Sorted,
+                            words,
+                        )?)?,
+                    )),
+                    ArcKwgEither::Node24(_) => ArcKwgEither::Node24(std::sync::Arc::new(
+                        kwg::Kwg::from_bytes_alloc(&build::build_big(
+                            build::BuildContent::Gaddawg,
+                            build::BuildLayout::Wolges,
+                            build::BuildOrder::Sorted,
+                            words,
+                        )?)?,
+                    )),
+                }),
+            );
+        }
+        Ok(())
+    }
 }
 
 #[derive(clap::Parser)]
@@ -888,11 +1058,6 @@ async fn main() -> error::Returns<()> {
     let mut jumbled_game_configs = std::collections::HashMap::new();
     let mut super_game_configs = std::collections::HashMap::new();
     let mut jumbled_super_game_configs = std::collections::HashMap::new();
-    let mut klvs = std::collections::HashMap::new();
-    let mut super_klvs = std::collections::HashMap::new();
-    let mut kwgs = std::collections::HashMap::new();
-    let mut tilters = std::collections::HashMap::new();
-    let mut kads = std::collections::HashMap::new();
     let mut rack_readers = std::collections::HashMap::new();
     let mut play_readers = std::collections::HashMap::new();
     for (lexicon, language) in lexicons.iter() {
@@ -934,80 +1099,6 @@ async fn main() -> error::Returns<()> {
                 jumbled_super_english_game_config.clone(),
             );
         }
-        match std::fs::read(format!("{lexicon}.klv2")) {
-            Ok(klv_bytes) => {
-                let klv_arc = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&klv_bytes)?);
-                match std::fs::read(format!("super-{lexicon}.klv2")) {
-                    Ok(super_klv_bytes) => {
-                        let super_klv_arc =
-                            std::sync::Arc::new(klv::Klv::from_bytes_alloc(&super_klv_bytes)?);
-                        super_klvs.insert(lexicon.to_string(), super_klv_arc);
-                    }
-                    Err(_) => {
-                        super_klvs.insert(lexicon.to_string(), std::sync::Arc::clone(&klv_arc));
-                    }
-                }
-                klvs.insert(lexicon.to_string(), klv_arc);
-            }
-            Err(err) => {
-                eprintln!("warning: {lexicon}.klv2: {err}");
-            }
-        }
-        match std::fs::read(format!("{lexicon}.kwg")) {
-            Ok(kwg_bytes) => {
-                let kwg_arc = ArcKwgEither::Node22(std::sync::Arc::new(
-                    kwg::Kwg::from_bytes_alloc(&kwg_bytes)?,
-                ));
-                tilters.insert(
-                    lexicon.to_string(),
-                    move_filter::Tilt::new(
-                        game_configs.get(*lexicon).unwrap(),
-                        &match kwg_arc {
-                            ArcKwgEither::Node22(ref kwg) => kwg,
-                            _ => panic!(),
-                        }
-                        .clone(),
-                        move_filter::Tilt::length_importances(),
-                    ),
-                );
-                kwgs.insert(lexicon.to_string(), std::sync::Arc::new(kwg_arc));
-            }
-            Err(err_kwg) => match std::fs::read(format!("{lexicon}.kbwg")) {
-                Ok(kbwg_bytes) => {
-                    let kbwg_arc = ArcKwgEither::Node24(std::sync::Arc::new(
-                        kwg::Kwg::from_bytes_alloc(&kbwg_bytes)?,
-                    ));
-                    tilters.insert(
-                        lexicon.to_string(),
-                        move_filter::Tilt::new(
-                            game_configs.get(*lexicon).unwrap(),
-                            &match kbwg_arc {
-                                ArcKwgEither::Node24(ref kbwg) => kbwg,
-                                _ => panic!(),
-                            }
-                            .clone(),
-                            move_filter::Tilt::length_importances(),
-                        ),
-                    );
-                    kwgs.insert(lexicon.to_string(), std::sync::Arc::new(kbwg_arc));
-                }
-                Err(err_kbwg) => {
-                    eprintln!("warning: {lexicon}.kwg: {err_kwg}");
-                    eprintln!("warning: {lexicon}.kbwg: {err_kbwg}");
-                }
-            },
-        }
-        match std::fs::read(format!("{lexicon}.kad")) {
-            Ok(kad_bytes) => {
-                let kad_arc = ArcKwgEither::Node22(std::sync::Arc::new(
-                    kwg::Kwg::from_bytes_alloc(&kad_bytes)?,
-                ));
-                kads.insert(lexicon.to_string(), std::sync::Arc::new(kad_arc));
-            }
-            Err(err) => {
-                eprintln!("warning: {lexicon}.kad: {err}");
-            }
-        }
         rack_readers.insert(
             lexicon.to_string(),
             match language {
@@ -1033,73 +1124,16 @@ async fn main() -> error::Returns<()> {
             },
         );
     }
-    let mut common_word_kwgs = std::collections::HashMap::new();
-    let mut common_word_plus_twos_kwgs = std::collections::HashMap::new();
-    for (list_name, list_language) in [("ECWL", Language::English), ("CGL", Language::German)] {
-        let Some(list_kwg) = kwgs.get(list_name) else {
-            continue;
-        };
-        let mut v1 = Vec::<bites::Bites>::new();
-        each_word(list_kwg, |w| v1.push(w.into()));
-        let mut v2 = Vec::<bites::Bites>::new();
-        let mut v3 = Vec::<bites::Bites>::new();
-        for (lexicon, language) in lexicons.iter() {
-            if *lexicon != list_name
-                && std::mem::discriminant(language) == std::mem::discriminant(&list_language)
-            {
-                v2.clear();
-                v3.clear();
-                let mut v1p = 0;
-                let kwg = kwgs.get(*lexicon).unwrap();
-                each_word(kwg, |w| {
-                    let mut in_list = false;
-                    while v1p < v1.len() {
-                        match v1[v1p][..].cmp(w) {
-                            std::cmp::Ordering::Greater => break,
-                            std::cmp::Ordering::Less => v1p += 1,
-                            std::cmp::Ordering::Equal => {
-                                in_list = true;
-                                v1p += 1;
-                                break;
-                            }
-                        }
-                    }
-                    if in_list {
-                        v2.push(w.into());
-                    }
-                    if in_list || w.len() <= 2 {
-                        v3.push(w.into());
-                    }
-                });
-                for (kwgs_out, words) in [
-                    (&mut common_word_kwgs, &v2),
-                    (&mut common_word_plus_twos_kwgs, &v3),
-                ] {
-                    kwgs_out.insert(
-                        lexicon.to_string(),
-                        std::sync::Arc::new(match **kwg {
-                            ArcKwgEither::Node22(_) => ArcKwgEither::Node22(std::sync::Arc::new(
-                                kwg::Kwg::from_bytes_alloc(&build::build(
-                                    build::BuildContent::Gaddawg,
-                                    build::BuildLayout::Wolges,
-                                    build::BuildOrder::Sorted,
-                                    words,
-                                )?)?,
-                            )),
-                            ArcKwgEither::Node24(_) => ArcKwgEither::Node24(std::sync::Arc::new(
-                                kwg::Kwg::from_bytes_alloc(&build::build_big(
-                                    build::BuildContent::Gaddawg,
-                                    build::BuildLayout::Wolges,
-                                    build::BuildOrder::Sorted,
-                                    words,
-                                )?)?,
-                            )),
-                        }),
-                    );
-                }
-            }
-        }
-    }
+    let mut files = LexiconFiles {
+        tried: std::collections::HashSet::new(),
+        klvs: std::collections::HashMap::new(),
+        super_klvs: std::collections::HashMap::new(),
+        kwgs: std::collections::HashMap::new(),
+        tilters: std::collections::HashMap::new(),
+        kads: std::collections::HashMap::new(),
+        common_word_kwgs: std::collections::HashMap::new(),
+        common_word_plus_twos_kwgs: std::collections::HashMap::new(),
+    };
 
     let alloc_reply_chan = |game_id| format!("bot.publish_event.{game_id}");
     let nc = std::sync::Arc::new(async_nats::connect(cli.nats).await?);
@@ -1120,6 +1154,17 @@ async fn main() -> error::Returns<()> {
             .ok()
             .and_then(|bot_req| bot_req.game_history.as_ref())
             .map(|game_history| game_history.uid.clone());
+        if let Some(game_history) = bot_req
+            .as_ref()
+            .ok()
+            .and_then(|bot_req| bot_req.game_history.as_ref())
+            && let Some(&(lexicon, language)) = lexicons
+                .iter()
+                .find(|(lexicon, _)| *lexicon == game_history.lexicon)
+            && let Err(err) = files.read(lexicon, language, &game_configs[lexicon])
+        {
+            eprintln!("warning: {lexicon}: {err}");
+        }
         struct RecycledStuffs<'a> {
             bot_req: Box<macondo::BotRequest>,
             kwg: std::sync::Arc<ArcKwgEither>,
@@ -1158,23 +1203,25 @@ async fn main() -> error::Returns<()> {
             .get(&game_history.lexicon)
             .ok_or("not familiar with the lexicon")?;
             let klv = if is_super {
-                super_klvs.get(&game_history.lexicon)
+                files.super_klvs.get(&game_history.lexicon)
             } else {
-                klvs.get(&game_history.lexicon)
+                files.klvs.get(&game_history.lexicon)
             }
             .ok_or("not familiar with the lexicon")?;
             let (kwg, tilter) = match is_jumbled {
                 true => {
-                    let kad = kads
+                    let kad = files
+                        .kads
                         .get(&game_history.lexicon)
                         .ok_or("not familiar with the lexicon")?;
                     (kad, None)
                 }
                 false => {
-                    let kwg = kwgs
+                    let kwg = files
+                        .kwgs
                         .get(&game_history.lexicon)
                         .ok_or("not familiar with the lexicon")?;
-                    (kwg, tilters.get(&game_history.lexicon))
+                    (kwg, files.tilters.get(&game_history.lexicon))
                 }
             };
             let rack_reader = rack_readers
@@ -1183,9 +1230,9 @@ async fn main() -> error::Returns<()> {
             let play_reader = play_readers
                 .get(&game_history.lexicon)
                 .ok_or("not familiar with the lexicon")?;
-            let option_common_word_kwg = common_word_kwgs.get(&game_history.lexicon);
+            let option_common_word_kwg = files.common_word_kwgs.get(&game_history.lexicon);
             let option_common_word_plus_twos_kwg =
-                common_word_plus_twos_kwgs.get(&game_history.lexicon);
+                files.common_word_plus_twos_kwgs.get(&game_history.lexicon);
             // ensure they have the same node type as kwg
             let kwg_variant = match **kwg {
                 ArcKwgEither::Node22(_) => 22,
