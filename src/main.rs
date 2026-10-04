@@ -133,12 +133,72 @@ struct ElucubrateArguments<
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
     option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
     option_common_word_plus_twos_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
+    arm_tables: &'a anagrams::ArmTables,
 }
 
 #[expect(deprecated)]
 #[inline(always)]
 fn deprecated_second_went_first(game_history: &macondo::GameHistory) -> bool {
     game_history.second_went_first
+}
+
+enum OmgBotType {
+    Unfiltered,
+    Tilt(i8),
+    Sim,
+}
+
+enum WordList {
+    Full,
+    CommonWord,
+    CommonWordPlusTwos,
+}
+
+// the words a bot plays from, and how it picks among them
+#[inline]
+fn word_list_and_bot_type(bot_code: macondo::bot_request::BotCode) -> (WordList, OmgBotType) {
+    match bot_code {
+        macondo::bot_request::BotCode::HastyBot => (WordList::Full, OmgBotType::Unfiltered),
+        macondo::bot_request::BotCode::Level1CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Tilt(2))
+        }
+        macondo::bot_request::BotCode::Level2CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Tilt(3))
+        }
+        macondo::bot_request::BotCode::Level3CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Tilt(4))
+        }
+        macondo::bot_request::BotCode::Level4CommonWordBot => {
+            (WordList::CommonWord, OmgBotType::Unfiltered)
+        }
+        macondo::bot_request::BotCode::Level1Probabilistic => (WordList::Full, OmgBotType::Tilt(1)),
+        macondo::bot_request::BotCode::Level2Probabilistic => (WordList::Full, OmgBotType::Tilt(2)),
+        macondo::bot_request::BotCode::Level3Probabilistic => (WordList::Full, OmgBotType::Tilt(3)),
+        macondo::bot_request::BotCode::Level4Probabilistic => (WordList::Full, OmgBotType::Tilt(4)),
+        macondo::bot_request::BotCode::Level5Probabilistic => (WordList::Full, OmgBotType::Tilt(5)),
+        macondo::bot_request::BotCode::NoLeaveBot => (WordList::Full, OmgBotType::Unfiltered),
+        macondo::bot_request::BotCode::SimmingBot => (WordList::Full, OmgBotType::Sim),
+        macondo::bot_request::BotCode::HastyPlusEndgameBot => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::SimmingInferBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::FastMlBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::RandomBotWithTemperature => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::SimmingWithMlEvalBot => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::SimmingBotNoEg => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::SimmingInferBotNoEg => {
+            (WordList::Full, OmgBotType::Unfiltered)
+        } // not supported
+        macondo::bot_request::BotCode::CustomBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
+        macondo::bot_request::BotCode::CommonWordPlusTwosBot => {
+            (WordList::CommonWordPlusTwos, OmgBotType::Unfiltered)
+        }
+        macondo::bot_request::BotCode::Unknown => (WordList::Full, OmgBotType::Unfiltered), // not supported
+    }
 }
 
 async fn elucubrate<
@@ -165,6 +225,7 @@ async fn elucubrate<
         rack_reader,
         option_common_word_kwg,
         option_common_word_plus_twos_kwg,
+        arm_tables,
     }: ElucubrateArguments<'_, PlaceTilesType, N>,
 ) -> error::Returns<Option<(macondo::GameEvent, bool)>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
@@ -270,59 +331,7 @@ async fn elucubrate<
 
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
     println!("it is {my_nickname}'s turn");
-    enum OmgBotType {
-        Unfiltered,
-        Tilt(i8),
-        Sim,
-    }
-    enum WordList {
-        Full,
-        CommonWord,
-        CommonWordPlusTwos,
-    }
-    let (word_list, effective_bot_type) = match bot_req.bot_type() {
-        macondo::bot_request::BotCode::HastyBot => (WordList::Full, OmgBotType::Unfiltered),
-        macondo::bot_request::BotCode::Level1CommonWordBot => {
-            (WordList::CommonWord, OmgBotType::Tilt(2))
-        }
-        macondo::bot_request::BotCode::Level2CommonWordBot => {
-            (WordList::CommonWord, OmgBotType::Tilt(3))
-        }
-        macondo::bot_request::BotCode::Level3CommonWordBot => {
-            (WordList::CommonWord, OmgBotType::Tilt(4))
-        }
-        macondo::bot_request::BotCode::Level4CommonWordBot => {
-            (WordList::CommonWord, OmgBotType::Unfiltered)
-        }
-        macondo::bot_request::BotCode::Level1Probabilistic => (WordList::Full, OmgBotType::Tilt(1)),
-        macondo::bot_request::BotCode::Level2Probabilistic => (WordList::Full, OmgBotType::Tilt(2)),
-        macondo::bot_request::BotCode::Level3Probabilistic => (WordList::Full, OmgBotType::Tilt(3)),
-        macondo::bot_request::BotCode::Level4Probabilistic => (WordList::Full, OmgBotType::Tilt(4)),
-        macondo::bot_request::BotCode::Level5Probabilistic => (WordList::Full, OmgBotType::Tilt(5)),
-        macondo::bot_request::BotCode::NoLeaveBot => (WordList::Full, OmgBotType::Unfiltered),
-        macondo::bot_request::BotCode::SimmingBot => (WordList::Full, OmgBotType::Sim),
-        macondo::bot_request::BotCode::HastyPlusEndgameBot => {
-            (WordList::Full, OmgBotType::Unfiltered)
-        } // not supported
-        macondo::bot_request::BotCode::SimmingInferBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::FastMlBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::RandomBotWithTemperature => {
-            (WordList::Full, OmgBotType::Unfiltered)
-        } // not supported
-        macondo::bot_request::BotCode::SimmingWithMlEvalBot => {
-            (WordList::Full, OmgBotType::Unfiltered)
-        } // not supported
-        macondo::bot_request::BotCode::SimmingBotNoEg => (WordList::Full, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::SimmingInferBotNoEg => {
-            (WordList::Full, OmgBotType::Unfiltered)
-        } // not supported
-        macondo::bot_request::BotCode::CustomBot => (WordList::Full, OmgBotType::Unfiltered), // not supported
-        macondo::bot_request::BotCode::CommonWordPlusTwosBot => {
-            (WordList::CommonWordPlusTwos, OmgBotType::Unfiltered)
-        }
-        macondo::bot_request::BotCode::Unknown => (WordList::Full, OmgBotType::Unfiltered), // not supported
-    };
-    let no_tables = anagrams::ArmTables::None;
+    let (word_list, effective_bot_type) = word_list_and_bot_type(bot_req.bot_type());
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
         OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
             move_filter::GenMoves::Tilt {
@@ -342,7 +351,7 @@ async fn elucubrate<
             move_picker::MovePicker::Simmer(Box::new(move_picker::Simmer::new(
                 game_config,
                 kwg,
-                &no_tables,
+                arm_tables,
                 klv,
                 move_picker::SimmerParams {
                     num_sim_iters: move_picker::DEFAULT_NUM_SIM_ITERS,
@@ -400,8 +409,8 @@ async fn elucubrate<
         board_tiles: &game_state.board_tiles,
         game_config,
         kwg: used_kwg,
-        anagrams: None,
-        rack_lengths: None,
+        anagrams: arm_tables.anagrams(),
+        rack_lengths: arm_tables.rack_lengths(),
         klv: match bot_req.bot_type() {
             macondo::bot_request::BotCode::NoLeaveBot => noleave_klv,
             _ => klv,
@@ -951,6 +960,8 @@ impl LexiconFiles {
 struct Cli {
     #[arg(long, default_value = "localhost", help = "the nats server")]
     nats: String,
+    #[arg(long, help = "generate with the lean arm")]
+    lean: bool,
 }
 
 #[tokio::main]
@@ -1134,6 +1145,10 @@ async fn main() -> error::Returns<()> {
         common_word_kwgs: std::collections::HashMap::new(),
         common_word_plus_twos_kwgs: std::collections::HashMap::new(),
     };
+    // a lexicon's tables for its classic and super games, built the first time a
+    // request needs them
+    let mut arm_tables = std::collections::HashMap::new();
+    let no_tables = std::sync::Arc::new(anagrams::ArmTables::None);
 
     let alloc_reply_chan = |game_id| format!("bot.publish_event.{game_id}");
     let nc = std::sync::Arc::new(async_nats::connect(cli.nats).await?);
@@ -1167,6 +1182,7 @@ async fn main() -> error::Returns<()> {
         }
         struct RecycledStuffs<'a> {
             bot_req: Box<macondo::BotRequest>,
+            is_super: bool,
             kwg: std::sync::Arc<ArcKwgEither>,
             klv: std::sync::Arc<klv::Klv<kwg::Node22>>,
             game_config: std::sync::Arc<game_config::GameConfig>,
@@ -1253,6 +1269,7 @@ async fn main() -> error::Returns<()> {
 
             Ok(RecycledStuffs {
                 bot_req,
+                is_super,
                 kwg: std::sync::Arc::clone(kwg),
                 klv: std::sync::Arc::clone(klv),
                 game_config: std::sync::Arc::clone(game_config),
@@ -1286,6 +1303,7 @@ async fn main() -> error::Returns<()> {
             }
             Ok(RecycledStuffs {
                 bot_req,
+                is_super,
                 kwg,
                 klv,
                 game_config,
@@ -1295,6 +1313,45 @@ async fn main() -> error::Returns<()> {
                 option_common_word_kwg,
                 option_common_word_plus_twos_kwg,
             }) => {
+                // the tables hold the full word list, so only a classic game
+                // played from it reads them
+                let tables =
+                    if matches!(word_list_and_bot_type(bot_req.bot_type()).0, WordList::Full)
+                        && bot_req.evaluation_request.is_none()
+                        && matches!(game_config.game_rules(), game_config::GameRules::Classic)
+                        && let Some(game_history) = &bot_req.game_history
+                    {
+                        let lexicon = &game_history.lexicon;
+                        std::sync::Arc::clone(
+                            arm_tables
+                                .entry((lexicon.clone(), is_super))
+                                .or_insert_with(|| {
+                                    let built = match *kwg {
+                                        ArcKwgEither::Node22(ref kwg) => {
+                                            anagrams::ArmTables::build(kwg, &game_config, cli.lean)
+                                        }
+                                        ArcKwgEither::Node24(ref kwg) => {
+                                            anagrams::ArmTables::build(kwg, &game_config, cli.lean)
+                                        }
+                                    };
+                                    match built {
+                                        Ok(tables) => {
+                                            println!(
+                                                "built {lexicon}'s arm tables: {} bytes",
+                                                tables.bytes()
+                                            );
+                                            std::sync::Arc::new(tables)
+                                        }
+                                        Err(err) => {
+                                            eprintln!("warning: {lexicon}'s arm tables: {err}");
+                                            std::sync::Arc::clone(&no_tables)
+                                        }
+                                    }
+                                }),
+                        )
+                    } else {
+                        std::sync::Arc::clone(&no_tables)
+                    };
                 match *kwg {
                     ArcKwgEither::Node22(ref kwg) => do_it(DoItArguments {
                         nc: &nc,
@@ -1325,6 +1382,7 @@ async fn main() -> error::Returns<()> {
                                 }
                                 _ => None,
                             }),
+                        arm_tables: tables,
                     }),
                     ArcKwgEither::Node24(ref kwg) => do_it(DoItArguments {
                         nc: &nc,
@@ -1355,6 +1413,7 @@ async fn main() -> error::Returns<()> {
                                 }
                                 _ => None,
                             }),
+                        arm_tables: tables,
                     }),
                 }
             }
@@ -1383,6 +1442,7 @@ struct DoItArguments<
     play_reader: std::sync::Arc<alphabet::AlphabetReader>,
     option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
     option_common_word_plus_twos_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
+    arm_tables: std::sync::Arc<anagrams::ArmTables>,
 }
 
 fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Sync + 'static>(
@@ -1402,6 +1462,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
         play_reader,
         option_common_word_kwg,
         option_common_word_plus_twos_kwg,
+        arm_tables,
     }: DoItArguments<'a, F, N>,
 ) {
     let nc = std::sync::Arc::clone(nc);
@@ -1590,6 +1651,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                     rack_reader: &rack_reader,
                     option_common_word_kwg,
                     option_common_word_plus_twos_kwg,
+                    arm_tables: &arm_tables,
                 })
                 .await;
 
