@@ -962,6 +962,12 @@ struct Cli {
     nats: String,
     #[arg(long, help = "generate with the lean arm")]
     lean: bool,
+    #[arg(
+        long,
+        value_name = "BYTES",
+        help = "the most the arm tables hold, those built and one building [default: no limit]"
+    )]
+    table_bytes: Option<usize>,
 }
 
 #[tokio::main]
@@ -1148,6 +1154,7 @@ async fn main() -> error::Returns<()> {
     // a lexicon's tables for its classic and super games, built the first time a
     // request needs them
     let mut arm_tables = std::collections::HashMap::new();
+    let mut held = 0usize;
     let no_tables = std::sync::Arc::new(anagrams::ArmTables::None);
 
     let alloc_reply_chan = |game_id| format!("bot.publish_event.{game_id}");
@@ -1315,32 +1322,55 @@ async fn main() -> error::Returns<()> {
             }) => {
                 // the tables hold the full word list, so only a classic game
                 // played from it reads them
-                let tables =
-                    if matches!(word_list_and_bot_type(bot_req.bot_type()).0, WordList::Full)
-                        && bot_req.evaluation_request.is_none()
-                        && matches!(game_config.game_rules(), game_config::GameRules::Classic)
-                        && let Some(game_history) = &bot_req.game_history
-                    {
-                        let lexicon = &game_history.lexicon;
-                        std::sync::Arc::clone(
+                let tables = if matches!(
+                    word_list_and_bot_type(bot_req.bot_type()).0,
+                    WordList::Full
+                ) && bot_req.evaluation_request.is_none()
+                    && matches!(game_config.game_rules(), game_config::GameRules::Classic)
+                    && let Some(game_history) = &bot_req.game_history
+                {
+                    let lexicon = &game_history.lexicon;
+                    std::sync::Arc::clone(
                             arm_tables
                                 .entry((lexicon.clone(), is_super))
                                 .or_insert_with(|| {
+                                    // the tables built so far and this build stay
+                                    // within --table-bytes at every moment
+                                    let room = cli
+                                        .table_bytes
+                                        .map_or(usize::MAX, |cap| cap.saturating_sub(held));
                                     let built = match *kwg {
                                         ArcKwgEither::Node22(ref kwg) => {
-                                            anagrams::ArmTables::build(kwg, &game_config, cli.lean)
+                                            anagrams::ArmTables::build_within(
+                                                kwg,
+                                                &game_config,
+                                                cli.lean,
+                                                room,
+                                            )
                                         }
                                         ArcKwgEither::Node24(ref kwg) => {
-                                            anagrams::ArmTables::build(kwg, &game_config, cli.lean)
+                                            anagrams::ArmTables::build_within(
+                                                kwg,
+                                                &game_config,
+                                                cli.lean,
+                                                room,
+                                            )
                                         }
                                     };
                                     match built {
-                                        Ok(tables) => {
+                                        Ok(Some(tables)) => {
+                                            held += tables.bytes();
                                             println!(
-                                                "built {lexicon}'s arm tables: {} bytes",
+                                                "built {lexicon}'s arm tables: {} bytes, {held} held",
                                                 tables.bytes()
                                             );
                                             std::sync::Arc::new(tables)
+                                        }
+                                        Ok(None) => {
+                                            println!(
+                                                "{lexicon}'s arm tables would pass {room} bytes, so none"
+                                            );
+                                            std::sync::Arc::clone(&no_tables)
                                         }
                                         Err(err) => {
                                             eprintln!("warning: {lexicon}'s arm tables: {err}");
@@ -1349,9 +1379,9 @@ async fn main() -> error::Returns<()> {
                                     }
                                 }),
                         )
-                    } else {
-                        std::sync::Arc::clone(&no_tables)
-                    };
+                } else {
+                    std::sync::Arc::clone(&no_tables)
+                };
                 match *kwg {
                     ArcKwgEither::Node22(ref kwg) => do_it(DoItArguments {
                         nc: &nc,
