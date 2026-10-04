@@ -1320,11 +1320,12 @@ async fn main() -> error::Returns<()> {
                 option_common_word_kwg,
                 option_common_word_plus_twos_kwg,
             }) => {
-                // the tables hold the full word list, so only a classic game
-                // played from it reads them
+                // only a simming bot, generating thousands of times a move,
+                // builds and reads the tables; they hold the full word list,
+                // for a classic game
                 let tables = if matches!(
-                    word_list_and_bot_type(bot_req.bot_type()).0,
-                    WordList::Full
+                    word_list_and_bot_type(bot_req.bot_type()),
+                    (WordList::Full, OmgBotType::Sim)
                 ) && bot_req.evaluation_request.is_none()
                     && matches!(game_config.game_rules(), game_config::GameRules::Classic)
                     && let Some(game_history) = &bot_req.game_history
