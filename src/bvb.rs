@@ -91,7 +91,7 @@ fn parse_played_tiles(
     alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> error::Returns<()> {
     v.clear();
     if !s.is_empty() {
         v.reserve(s.len());
@@ -145,7 +145,7 @@ fn parse_rack(
     alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> error::Returns<()> {
     alphabet_reader.set_word(s, v)
 }
 
@@ -191,14 +191,14 @@ fn do_it<N: kwg::Node + Sync>(
     let mut num_completed = 0usize;
     while num_completed < num_games {
         // for nostalgic reasons, this uses CSW21.kwg with v1 english.klv
-        let klv = klv::Klv::<kwg::Node22>::from_bytes_alloc(&std::fs::read("english.klv")?);
+        let klv = klv::Klv::<kwg::Node22>::from_bytes_alloc(&std::fs::read("english.klv")?)?;
         let game_config = game_config::make_english_game_config();
         let dim = game_config.board_layout().dim();
         let alphabet = game_config.alphabet();
         //let rack_reader = new_for_lowercase_racks(alphabet);
         let rack_reader = alphabet::AlphabetReader::new_for_racks(alphabet);
         let play_reader = alphabet::AlphabetReader::new_for_plays(alphabet);
-        let kwg = kwg::Kwg::<N>::from_bytes_alloc(&std::fs::read("CSW21.kwg")?);
+        let kwg = kwg::Kwg::<N>::from_bytes_alloc(&std::fs::read("CSW21.kwg")?)?;
         let alphabet_len_without_blank = alphabet.len() - 1;
         let mut available_tally_buf = Vec::new();
         let mut game_state = game_state::GameState::new(&game_config);
@@ -211,7 +211,7 @@ fn do_it<N: kwg::Node + Sync>(
         let mut place_tiles = |board_tiles: &mut [u8],
                                event: &str,
                                kwg: Option<&kwg::Kwg<N>>|
-         -> Result<bool, Box<dyn std::error::Error>> {
+         -> error::Returns<bool> {
             // event is of the format 9I:SO.UwU
 
             let (coord_token, played_tiles_token) =
@@ -453,7 +453,7 @@ fn do_it<N: kwg::Node + Sync>(
 
             // just fill in one rack, leave opponent's rack empty
             game_state.players[0].rack.clone_from(&rack);
-            display::print_game_state(&game_config, &game_state, None);
+            display::print_game_state(&game_config, &game_state, None)?;
 
             if !is_ongoing {
                 let score0 = game_state.players[0].score; // always our score
@@ -499,7 +499,7 @@ fn do_it<N: kwg::Node + Sync>(
                     board_snapshot,
                     &game_state,
                     &game_state.current_player().rack,
-                );
+                )?;
                 let plays = &mut move_generator.plays;
                 let play = &plays[0].play; // assume at least there's always Pass
 
@@ -545,7 +545,7 @@ fn do_it<N: kwg::Node + Sync>(
                 })?;
                 game_state.next_turn(); // for display
                 // bag is displayed unsorted
-                display::print_game_state(&game_config, &game_state, None);
+                display::print_game_state(&game_config, &game_state, None)?;
             }
             info!("makePlay {move_to_send_buf}");
 

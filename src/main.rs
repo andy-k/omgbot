@@ -15,7 +15,7 @@ fn parse_played_tiles(
     alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> error::Returns<()> {
     v.clear();
     if !s.is_empty() {
         v.reserve(s.len());
@@ -41,7 +41,7 @@ fn parse_rack(
     alphabet_reader: &alphabet::AlphabetReader,
     s: &str,
     v: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> error::Returns<()> {
     alphabet_reader.set_word(s, v)
 }
 
@@ -117,7 +117,7 @@ struct ElucubrateArguments<
         Option<&kwg::Kwg<N>>,
         &alphabet::Alphabet,
         bool,
-    ) -> Result<bool, Box<dyn std::error::Error>>,
+    ) -> error::Returns<bool>,
     N: kwg::Node + Send,
 > {
     bot_req: Box<macondo::BotRequest>,
@@ -148,7 +148,7 @@ async fn elucubrate<
         Option<&kwg::Kwg<N>>,
         &alphabet::Alphabet,
         bool,
-    ) -> Result<bool, Box<dyn std::error::Error>>,
+    ) -> error::Returns<bool>,
     N: kwg::Node + Send + Sync,
 >(
     ElucubrateArguments {
@@ -166,7 +166,7 @@ async fn elucubrate<
         option_common_word_kwg,
         option_common_word_plus_twos_kwg,
     }: ElucubrateArguments<'_, PlaceTilesType, N>,
-) -> Result<Option<(macondo::GameEvent, bool)>, Box<dyn std::error::Error>> {
+) -> error::Returns<Option<(macondo::GameEvent, bool)>> {
     let game_history = bot_req.game_history.as_ref().unwrap();
 
     // rebuild the state
@@ -322,6 +322,7 @@ async fn elucubrate<
         }
         macondo::bot_request::BotCode::Unknown => (WordList::Full, OmgBotType::Unfiltered), // not supported
     };
+    let no_tables = anagrams::ArmTables::None;
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
         OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
             move_filter::GenMoves::Tilt {
@@ -338,16 +339,17 @@ async fn elucubrate<
         ),
         OmgBotType::Sim if !is_jumbled => (
             move_filter::GenMoves::Unfiltered,
-            move_picker::MovePicker::Simmer(move_picker::Simmer::new(
+            move_picker::MovePicker::Simmer(Box::new(move_picker::Simmer::new(
                 game_config,
                 kwg,
+                &no_tables,
                 klv,
                 move_picker::SimmerParams {
                     num_sim_iters: move_picker::DEFAULT_NUM_SIM_ITERS,
                     sim_threads: 1,
                     win_pct_table: None,
                 },
-            )),
+            )?)),
             false,
         ),
         _ => {
@@ -374,7 +376,7 @@ async fn elucubrate<
     };
 
     let board_layout = game_config.board_layout();
-    display::print_board(alphabet, board_layout, &game_state.board_tiles);
+    display::print_board(alphabet, board_layout, &game_state.board_tiles)?;
     println!(
         "{}",
         alphabet.fmt_rack(&game_state.players[game_state.turn as usize].rack)
@@ -416,7 +418,7 @@ async fn elucubrate<
         } else {
             &game_state.current_player().rack
         },
-    );
+    )?;
     let plays = &mut move_generator.plays;
     let play = &plays[0].play; // assume at least there's always Pass
     println!("Playing: {}", play.fmt(board_snapshot));
@@ -489,7 +491,7 @@ struct EvaluateArguments<
         Option<&kwg::Kwg<N>>,
         &alphabet::Alphabet,
         bool,
-    ) -> Result<bool, Box<dyn std::error::Error>>,
+    ) -> error::Returns<bool>,
     N: kwg::Node + Send,
 > {
     bot_req: Box<macondo::BotRequest>,
@@ -515,7 +517,7 @@ async fn evaluate<
         Option<&kwg::Kwg<N>>,
         &alphabet::Alphabet,
         bool,
-    ) -> Result<bool, Box<dyn std::error::Error>>,
+    ) -> error::Returns<bool>,
     N: kwg::Node + Send + Sync,
 >(
     EvaluateArguments {
@@ -530,7 +532,7 @@ async fn evaluate<
         rack_reader,
         play_reader,
     }: EvaluateArguments<'_, PlaceTilesType, N>,
-) -> Result<macondo::Evaluation, Box<dyn std::error::Error>> {
+) -> error::Returns<macondo::Evaluation> {
     let kwg: &kwg::Kwg<N> = kwg;
     let klv: &klv::Klv<kwg::Node22> = klv;
     let game_config: &game_config::GameConfig = game_config;
@@ -681,7 +683,7 @@ fn eval_played_move(
         exch_buf,
         alpha_buf,
     }: EvalPlayedMoveArguments<'_>,
-) -> Result<macondo::SingleEvaluation, Box<dyn std::error::Error>> {
+) -> error::Returns<macondo::SingleEvaluation> {
     if plays.is_empty() {
         return Ok(macondo::SingleEvaluation::default());
     }
@@ -772,8 +774,8 @@ enum Language {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES));
+async fn main() -> error::Returns<()> {
+    let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES)?);
     // one per supported config
     let catalan_game_config = std::sync::Arc::new(game_config::make_catalan_game_config());
     let jumbled_catalan_game_config =
@@ -923,11 +925,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         match std::fs::read(format!("{lexicon}.klv2")) {
             Ok(klv_bytes) => {
-                let klv_arc = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&klv_bytes));
+                let klv_arc = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&klv_bytes)?);
                 match std::fs::read(format!("super-{lexicon}.klv2")) {
                     Ok(super_klv_bytes) => {
                         let super_klv_arc =
-                            std::sync::Arc::new(klv::Klv::from_bytes_alloc(&super_klv_bytes));
+                            std::sync::Arc::new(klv::Klv::from_bytes_alloc(&super_klv_bytes)?);
                         super_klvs.insert(lexicon.to_string(), super_klv_arc);
                     }
                     Err(_) => {
@@ -943,7 +945,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match std::fs::read(format!("{lexicon}.kwg")) {
             Ok(kwg_bytes) => {
                 let kwg_arc = ArcKwgEither::Node22(std::sync::Arc::new(
-                    kwg::Kwg::from_bytes_alloc(&kwg_bytes),
+                    kwg::Kwg::from_bytes_alloc(&kwg_bytes)?,
                 ));
                 tilters.insert(
                     lexicon.to_string(),
@@ -962,7 +964,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(err_kwg) => match std::fs::read(format!("{lexicon}.kbwg")) {
                 Ok(kbwg_bytes) => {
                     let kbwg_arc = ArcKwgEither::Node24(std::sync::Arc::new(
-                        kwg::Kwg::from_bytes_alloc(&kbwg_bytes),
+                        kwg::Kwg::from_bytes_alloc(&kbwg_bytes)?,
                     ));
                     tilters.insert(
                         lexicon.to_string(),
@@ -987,7 +989,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match std::fs::read(format!("{lexicon}.kad")) {
             Ok(kad_bytes) => {
                 let kad_arc = ArcKwgEither::Node22(std::sync::Arc::new(
-                    kwg::Kwg::from_bytes_alloc(&kad_bytes),
+                    kwg::Kwg::from_bytes_alloc(&kad_bytes)?,
                 ));
                 kads.insert(lexicon.to_string(), std::sync::Arc::new(kad_arc));
             }
@@ -1071,7 +1073,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     build::BuildLayout::Wolges,
                                     build::BuildOrder::Sorted,
                                     words,
-                                )?),
+                                )?)?,
                             )),
                             ArcKwgEither::Node24(_) => ArcKwgEither::Node24(std::sync::Arc::new(
                                 kwg::Kwg::from_bytes_alloc(&build::build_big(
@@ -1079,7 +1081,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     build::BuildLayout::Wolges,
                                     build::BuildOrder::Sorted,
                                     words,
-                                )?),
+                                )?)?,
                             )),
                         }),
                     );
@@ -1119,7 +1121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             option_common_word_kwg: Option<std::sync::Arc<ArcKwgEither>>,
             option_common_word_plus_twos_kwg: Option<std::sync::Arc<ArcKwgEither>>,
         }
-        let recycled_stuffs = (|| -> Result<RecycledStuffs<'_>, Box<dyn std::error::Error>> {
+        let recycled_stuffs = (|| -> error::Returns<RecycledStuffs<'_>> {
             let bot_req = Box::new(bot_req?);
             println!("{bot_req:?}");
 
@@ -1363,7 +1365,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                                kwg: Option<&kwg::Kwg<N>>,
                                alphabet: &alphabet::Alphabet,
                                is_jumbled: bool|
-             -> Result<bool, Box<dyn std::error::Error>> {
+             -> error::Returns<bool> {
                 let board_layout = game_config.board_layout();
                 let dim = board_layout.dim();
                 if event.row < 0 || event.row >= dim.rows as i32 {
