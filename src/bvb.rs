@@ -588,8 +588,16 @@ fn do_it<N: kwg::Node + Sync>(
     Ok(())
 }
 
+// the commits this program was built from: omgbot's, then wolges's, each with
+// the target, as their build.rs files stamp them
+static VERSION: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| format!("{} wolges {}", env!("OMGBOT_VERSION"), wolges::VERSION));
+
 #[derive(clap::Parser)]
-#[command(about = "play a bot against another through a game server")]
+#[command(
+    about = "play a bot against another through a game server",
+    version = VERSION.as_str()
+)]
 struct Cli {
     #[arg(help = "the server, such as http://127.0.0.1:8001")]
     url: String,
