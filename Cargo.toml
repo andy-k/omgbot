@@ -25,7 +25,7 @@ log = { version = "0.4.34", optional = true }
 prost = "0.14.4"
 rand = { version = "0.10.3", features = ["chacha"] }
 reqwest = { version = "0.13.5", features = ["blocking"], optional = true }
-tokio = { version = "1.54.0", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 wolges = { path = "wolges" }
 
 [build-dependencies]
