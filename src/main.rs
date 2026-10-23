@@ -45,6 +45,26 @@ fn parse_rack(
     alphabet_reader.set_word(s, v)
 }
 
+// the word a placement forms along its line, each tile it plays through read
+// off the board, a blank as its letter in lowercase
+fn main_word(
+    alphabet: &alphabet::Alphabet,
+    board_tiles: &[u8],
+    strider: &matrix::Strider,
+    idx: i8,
+    word: &[u8],
+) -> String {
+    let mut s = String::new();
+    for (i, &tile) in (idx..).zip(word.iter()) {
+        let mut shown_tile = tile;
+        if shown_tile == 0 {
+            shown_tile = board_tiles[strider.at(i)];
+        }
+        s.push_str(alphabet.of_board(shown_tile).unwrap());
+    }
+    s
+}
+
 enum ArcKwgEither {
     Node22(std::sync::Arc<kwg::Kwg<kwg::Node22>>),
     Node24(std::sync::Arc<kwg::Kwg<kwg::Node24>>),
@@ -476,16 +496,8 @@ async fn elucubrate<
                 game_event.position = format!("{}{}", lane + 1, display::column(*idx));
                 dim.across(*lane)
             };
-            let mut s = String::new();
-            for (i, &tile) in (*idx..).zip(word.iter()) {
-                let mut shown_tile = tile;
-                if shown_tile == 0 {
-                    shown_tile = game_state.board_tiles[strider.at(i)];
-                }
-                s.push_str(alphabet.of_board(shown_tile).unwrap());
-            }
-
-            game_event.played_tiles = s;
+            game_event.played_tiles =
+                main_word(alphabet, &game_state.board_tiles, &strider, *idx, word);
             // Play scores are premultiplied by equity::SCALE (millipoints); the
             // GameEvent score is in whole points.
             game_event.score = equity::descale_score(*score);
@@ -520,7 +532,8 @@ struct EvaluateArguments<
 // Evaluate every move the requested user made, mirroring macondo's
 // EvaluationRequest handling: for each of the user's plays, rewind to the
 // position just before it, generate all moves (best equity first), locate the
-// played move, and report equity loss and bingo / star-play flags.
+// played move, and report equity loss, bingo / star-play flags, and the best
+// move's word.
 async fn evaluate<
     PlaceTilesType: FnMut(
         &mut [u8],
@@ -656,6 +669,9 @@ async fn evaluate<
                 rack_size,
                 play_reader,
                 rack_reader,
+                alphabet,
+                board_tiles: &game_state.board_tiles,
+                dim: game_config.board_layout().dim(),
                 word_buf: &mut word_buf,
                 exch_buf: &mut exch_buf,
                 alpha_buf: &mut alpha_buf,
@@ -676,6 +692,9 @@ struct EvalPlayedMoveArguments<'a> {
     rack_size: usize,
     play_reader: &'a alphabet::AlphabetReader,
     rack_reader: &'a alphabet::AlphabetReader,
+    alphabet: &'a alphabet::Alphabet,
+    board_tiles: &'a [u8],
+    dim: &'a matrix::Dim,
     word_buf: &'a mut Vec<u8>,
     exch_buf: &'a mut Vec<u8>,
     alpha_buf: &'a mut Vec<u8>,
@@ -693,6 +712,9 @@ fn eval_played_move(
         rack_size,
         play_reader,
         rack_reader,
+        alphabet,
+        board_tiles,
+        dim,
         word_buf,
         exch_buf,
         alpha_buf,
@@ -767,6 +789,24 @@ fn eval_played_move(
 
     let possible_star_play =
         plays.len() > 1 && top_equity.raw() - plays[1].equity.raw() > 10 * equity::SCALE;
+    // the best move's main word, empty when it places no tile
+    let top_move_word = match &plays[0].play {
+        movegen::Play::Place {
+            down,
+            lane,
+            idx,
+            word,
+            ..
+        } => {
+            let strider = if *down {
+                dim.down(*lane)
+            } else {
+                dim.across(*lane)
+            };
+            main_word(alphabet, board_tiles, &strider, *idx, word)
+        }
+        movegen::Play::Exchange { .. } => String::new(),
+    };
     Ok(macondo::SingleEvaluation {
         equity_loss: found_equity.as_f64() - top_equity.as_f64(),
         win_pct_loss: 0.0,
@@ -774,6 +814,7 @@ fn eval_played_move(
         possible_star_play,
         missed_star_play: possible_star_play && found_idx.is_some_and(|ix| ix > 0),
         top_is_bingo,
+        top_move_word,
     })
 }
 
@@ -1740,4 +1781,64 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_best_moves_word_reads_the_board_with_a_blank_in_lowercase() {
+        let game_config = game_config::make_english_game_config();
+        let alphabet = game_config.alphabet();
+        let dim = game_config.board_layout().dim();
+        let rack_reader = alphabet::AlphabetReader::new_for_racks(alphabet);
+        let play_reader = alphabet::AlphabetReader::new_for_plays(alphabet);
+        // a U at H5, which the best move, down from H4 with a blank for its
+        // first letter, plays through
+        let mut board_tiles = vec![0u8; dim.rows as usize * dim.cols as usize];
+        board_tiles[dim.down(7).at(4)] = 21;
+        let place = movegen::ValuedMove {
+            equity: equity::Equity::new(30 * equity::SCALE),
+            play: movegen::Play::Place {
+                down: true,
+                lane: 7,
+                idx: 3,
+                word: [0x80u8 | 17, 0, 9, 26][..].into(),
+                score: 33 * equity::SCALE,
+            },
+        };
+        let exchange = movegen::ValuedMove {
+            equity: equity::Equity::new(5 * equity::SCALE),
+            play: movegen::Play::Exchange {
+                tiles: [1u8, 5][..].into(),
+            },
+        };
+        let mut event = macondo::GameEvent {
+            exchanged: "AE".into(),
+            ..Default::default()
+        };
+        event.set_type(macondo::game_event::Type::Exchange);
+        let evaluation_of = |plays: &[movegen::ValuedMove]| {
+            eval_played_move(EvalPlayedMoveArguments {
+                event: &event,
+                plays,
+                rack_size: 7,
+                play_reader: &play_reader,
+                rack_reader: &rack_reader,
+                alphabet,
+                board_tiles: &board_tiles,
+                dim,
+                word_buf: &mut Vec::new(),
+                exch_buf: &mut Vec::new(),
+                alpha_buf: &mut Vec::new(),
+            })
+            .unwrap()
+        };
+        let evaluation = evaluation_of(&[place, exchange.clone()]);
+        assert_eq!(evaluation.top_move_word, "qUIZ");
+        assert_eq!(evaluation.equity_loss, -25.0);
+        // an exchange forms no word
+        assert_eq!(evaluation_of(&[exchange]).top_move_word, "");
+    }
 }
