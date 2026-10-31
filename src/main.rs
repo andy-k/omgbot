@@ -65,9 +65,21 @@ fn main_word(
     s
 }
 
-enum ArcKwgEither {
-    Node22(std::sync::Arc<kwg::Kwg<kwg::Node22>>),
-    Node24(std::sync::Arc<kwg::Kwg<kwg::Node24>>),
+// every word graph, kad, and leave table is held in kbwg's layout, the one the
+// engine works in: a kwg or kad file, or a klv2's leaves, repacked as it loads
+type ArcKwg = std::sync::Arc<kwg::Kwg<kwg::Node24>>;
+
+// a graph whose tiles its game's rules all have, or the reason it is refused
+fn refuse_a_wider_graph(
+    kwg: kwg::Kwg<kwg::Node24>,
+    game_config: &game_config::GameConfig,
+    file: &str,
+) -> error::Returns<kwg::Kwg<kwg::Node24>> {
+    let alphabet_len = game_config.alphabet().len();
+    if !kwg.fits_alphabet(alphabet_len) {
+        wolges::return_error!(format!("{file} has tiles past this game's {alphabet_len}"));
+    }
+    Ok(kwg)
 }
 
 fn each_word_raw<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
@@ -103,11 +115,8 @@ fn each_word_raw<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
     );
 }
 
-fn each_word<F: FnMut(&[u8])>(g: &ArcKwgEither, f: F) {
-    match g {
-        ArcKwgEither::Node22(g) => each_word_raw(g, f),
-        ArcKwgEither::Node24(g) => each_word_raw(g, f),
-    }
+fn each_word<F: FnMut(&[u8])>(g: &kwg::Kwg<kwg::Node24>, f: F) {
+    each_word_raw(g, f)
 }
 
 thread_local! {
@@ -146,8 +155,8 @@ struct ElucubrateArguments<
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg<N>>,
     game_config: &'a std::sync::Arc<game_config::GameConfig>,
-    klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
-    noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
+    klv: &'a std::sync::Arc<klv::Klv<kwg::Node24>>,
+    noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node24>>,
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
@@ -522,7 +531,7 @@ struct EvaluateArguments<
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg<N>>,
     game_config: &'a std::sync::Arc<game_config::GameConfig>,
-    klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
+    klv: &'a std::sync::Arc<klv::Klv<kwg::Node24>>,
     move_generator: movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
@@ -558,7 +567,7 @@ async fn evaluate<
     }: EvaluateArguments<'_, PlaceTilesType, N>,
 ) -> error::Returns<macondo::Evaluation> {
     let kwg: &kwg::Kwg<N> = kwg;
-    let klv: &klv::Klv<kwg::Node22> = klv;
+    let klv: &klv::Klv<kwg::Node24> = klv;
     let game_config: &game_config::GameConfig = game_config;
     let rack_reader: &alphabet::AlphabetReader = rack_reader;
     let play_reader: &alphabet::AlphabetReader = play_reader;
@@ -833,13 +842,13 @@ enum Language {
 // time a request names the lexicon
 struct LexiconFiles {
     tried: std::collections::HashSet<String>,
-    klvs: std::collections::HashMap<String, std::sync::Arc<klv::Klv<kwg::Node22>>>,
-    super_klvs: std::collections::HashMap<String, std::sync::Arc<klv::Klv<kwg::Node22>>>,
-    kwgs: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
+    klvs: std::collections::HashMap<String, std::sync::Arc<klv::Klv<kwg::Node24>>>,
+    super_klvs: std::collections::HashMap<String, std::sync::Arc<klv::Klv<kwg::Node24>>>,
+    kwgs: std::collections::HashMap<String, ArcKwg>,
     tilters: std::collections::HashMap<String, move_filter::Tilt<'static>>,
-    kads: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
-    common_word_kwgs: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
-    common_word_plus_twos_kwgs: std::collections::HashMap<String, std::sync::Arc<ArcKwgEither>>,
+    kads: std::collections::HashMap<String, ArcKwg>,
+    common_word_kwgs: std::collections::HashMap<String, ArcKwg>,
+    common_word_plus_twos_kwgs: std::collections::HashMap<String, ArcKwg>,
 }
 
 impl LexiconFiles {
@@ -858,17 +867,23 @@ impl LexiconFiles {
         lexicon: &str,
         language: Language,
         game_config: &game_config::GameConfig,
+        super_game_config: Option<&game_config::GameConfig>,
     ) -> error::Returns<()> {
         if !self.tried.insert(lexicon.to_string()) {
             return Ok(());
         }
         match std::fs::read(format!("{lexicon}.klv2")) {
             Ok(klv_bytes) => {
-                let klv_arc = std::sync::Arc::new(klv::Klv::from_bytes_alloc(&klv_bytes)?);
+                let klv = klv::kbwg_from_bytes_alloc(klv_bytes)?;
+                game_config.check_klv(&klv)?;
+                let klv_arc = std::sync::Arc::new(klv);
                 match std::fs::read(format!("super-{lexicon}.klv2")) {
                     Ok(super_klv_bytes) => {
-                        let super_klv_arc =
-                            std::sync::Arc::new(klv::Klv::from_bytes_alloc(&super_klv_bytes)?);
+                        let super_klv = klv::kbwg_from_bytes_alloc(super_klv_bytes)?;
+                        super_game_config
+                            .unwrap_or(game_config)
+                            .check_klv(&super_klv)?;
+                        let super_klv_arc = std::sync::Arc::new(super_klv);
                         self.super_klvs.insert(lexicon.to_string(), super_klv_arc);
                     }
                     Err(_) => {
@@ -884,7 +899,11 @@ impl LexiconFiles {
         }
         match std::fs::read(format!("{lexicon}.kwg")) {
             Ok(kwg_bytes) => {
-                let kwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kwg_bytes)?);
+                let kwg = std::sync::Arc::new(refuse_a_wider_graph(
+                    kwg::kbwg_from_bytes_alloc(kwg_bytes, false)?,
+                    game_config,
+                    &format!("{lexicon}.kwg"),
+                )?);
                 self.tilters.insert(
                     lexicon.to_string(),
                     move_filter::Tilt::new(
@@ -893,14 +912,15 @@ impl LexiconFiles {
                         move_filter::Tilt::length_importances(),
                     ),
                 );
-                self.kwgs.insert(
-                    lexicon.to_string(),
-                    std::sync::Arc::new(ArcKwgEither::Node22(kwg)),
-                );
+                self.kwgs.insert(lexicon.to_string(), kwg);
             }
             Err(err_kwg) => match std::fs::read(format!("{lexicon}.kbwg")) {
                 Ok(kbwg_bytes) => {
-                    let kbwg = std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&kbwg_bytes)?);
+                    let kbwg = std::sync::Arc::new(refuse_a_wider_graph(
+                        kwg::kbwg_from_bytes_alloc(kbwg_bytes, true)?,
+                        game_config,
+                        &format!("{lexicon}.kbwg"),
+                    )?);
                     self.tilters.insert(
                         lexicon.to_string(),
                         move_filter::Tilt::new(
@@ -909,10 +929,7 @@ impl LexiconFiles {
                             move_filter::Tilt::length_importances(),
                         ),
                     );
-                    self.kwgs.insert(
-                        lexicon.to_string(),
-                        std::sync::Arc::new(ArcKwgEither::Node24(kbwg)),
-                    );
+                    self.kwgs.insert(lexicon.to_string(), kbwg);
                 }
                 Err(err_kbwg) => {
                     eprintln!("warning: {lexicon}.kwg: {err_kwg}");
@@ -922,11 +939,13 @@ impl LexiconFiles {
         }
         match std::fs::read(format!("{lexicon}.kad")) {
             Ok(kad_bytes) => {
-                let kad_arc = ArcKwgEither::Node22(std::sync::Arc::new(
-                    kwg::Kwg::from_bytes_alloc(&kad_bytes)?,
-                ));
+                let kad = refuse_a_wider_graph(
+                    kwg::kbwg_from_bytes_alloc(kad_bytes, false)?,
+                    game_config,
+                    &format!("{lexicon}.kad"),
+                )?;
                 self.kads
-                    .insert(lexicon.to_string(), std::sync::Arc::new(kad_arc));
+                    .insert(lexicon.to_string(), std::sync::Arc::new(kad));
             }
             Err(err) => {
                 eprintln!("warning: {lexicon}.kad: {err}");
@@ -938,7 +957,7 @@ impl LexiconFiles {
         if lexicon == list_name {
             return Ok(());
         }
-        self.read(list_name, language, game_config)?;
+        self.read(list_name, language, game_config, super_game_config)?;
         let (Some(list_kwg), Some(kwg)) = (self.kwgs.get(list_name), self.kwgs.get(lexicon)) else {
             return Ok(());
         };
@@ -967,31 +986,18 @@ impl LexiconFiles {
                 v3.push(w.into());
             }
         });
-        let kwg = std::sync::Arc::clone(kwg);
         for (kwgs_out, words) in [
             (&mut self.common_word_kwgs, &v2),
             (&mut self.common_word_plus_twos_kwgs, &v3),
         ] {
             kwgs_out.insert(
                 lexicon.to_string(),
-                std::sync::Arc::new(match *kwg {
-                    ArcKwgEither::Node22(_) => ArcKwgEither::Node22(std::sync::Arc::new(
-                        kwg::Kwg::from_bytes_alloc(&build::build(
-                            build::BuildContent::Gaddawg,
-                            build::BuildLayout::Wolges,
-                            build::BuildOrder::Sorted,
-                            words,
-                        )?)?,
-                    )),
-                    ArcKwgEither::Node24(_) => ArcKwgEither::Node24(std::sync::Arc::new(
-                        kwg::Kwg::from_bytes_alloc(&build::build_big(
-                            build::BuildContent::Gaddawg,
-                            build::BuildLayout::Wolges,
-                            build::BuildOrder::Sorted,
-                            words,
-                        )?)?,
-                    )),
-                }),
+                std::sync::Arc::new(kwg::Kwg::from_bytes_alloc(&build::build_big(
+                    build::BuildContent::Gaddawg,
+                    build::BuildLayout::Wolges,
+                    build::BuildOrder::Sorted,
+                    words,
+                )?)?),
             );
         }
         Ok(())
@@ -1024,7 +1030,7 @@ struct Cli {
 #[tokio::main]
 async fn main() -> error::Returns<()> {
     let cli: Cli = clap::Parser::parse();
-    let noleave_klv = std::sync::Arc::new(klv::Klv::from_bytes_alloc(klv::EMPTY_KLV_BYTES)?);
+    let noleave_klv = std::sync::Arc::new(klv::Klv::<kwg::Node24>::empty()?);
     // one per supported config
     let catalan_game_config = std::sync::Arc::new(game_config::make_catalan_game_config());
     let jumbled_catalan_game_config =
@@ -1234,21 +1240,26 @@ async fn main() -> error::Returns<()> {
             && let Some(&(lexicon, language)) = lexicons
                 .iter()
                 .find(|(lexicon, _)| *lexicon == game_history.lexicon)
-            && let Err(err) = files.read(lexicon, language, &game_configs[lexicon])
+            && let Err(err) = files.read(
+                lexicon,
+                language,
+                &game_configs[lexicon],
+                super_game_configs.get(lexicon).map(|config| &**config),
+            )
         {
             eprintln!("warning: {lexicon}: {err}");
         }
         struct RecycledStuffs<'a> {
             bot_req: Box<macondo::BotRequest>,
             is_super: bool,
-            kwg: std::sync::Arc<ArcKwgEither>,
-            klv: std::sync::Arc<klv::Klv<kwg::Node22>>,
+            kwg: ArcKwg,
+            klv: std::sync::Arc<klv::Klv<kwg::Node24>>,
             game_config: std::sync::Arc<game_config::GameConfig>,
             tilter: Option<move_filter::Tilt<'a>>,
             rack_reader: std::sync::Arc<alphabet::AlphabetReader>,
             play_reader: std::sync::Arc<alphabet::AlphabetReader>,
-            option_common_word_kwg: Option<std::sync::Arc<ArcKwgEither>>,
-            option_common_word_plus_twos_kwg: Option<std::sync::Arc<ArcKwgEither>>,
+            option_common_word_kwg: Option<ArcKwg>,
+            option_common_word_plus_twos_kwg: Option<ArcKwg>,
         }
         let recycled_stuffs = (|| -> error::Returns<RecycledStuffs<'_>> {
             let bot_req = Box::new(bot_req?);
@@ -1307,24 +1318,6 @@ async fn main() -> error::Returns<()> {
             let option_common_word_kwg = files.common_word_kwgs.get(&game_history.lexicon);
             let option_common_word_plus_twos_kwg =
                 files.common_word_plus_twos_kwgs.get(&game_history.lexicon);
-            // ensure they have the same node type as kwg
-            let kwg_variant = match **kwg {
-                ArcKwgEither::Node22(_) => 22,
-                ArcKwgEither::Node24(_) => 24,
-            };
-            for option_list_kwg in [option_common_word_kwg, option_common_word_plus_twos_kwg] {
-                let list_kwg_variant = match option_list_kwg {
-                    None => kwg_variant,
-                    Some(arc_thing) => match **arc_thing {
-                        ArcKwgEither::Node22(_) => 22,
-                        ArcKwgEither::Node24(_) => 24,
-                    },
-                };
-                if kwg_variant != list_kwg_variant {
-                    wolges::return_error!("common word kwg has different variant".into());
-                }
-            }
-
             Ok(RecycledStuffs {
                 bot_req,
                 is_super,
@@ -1391,24 +1384,12 @@ async fn main() -> error::Returns<()> {
                                     let room = cli
                                         .table_bytes
                                         .map_or(usize::MAX, |cap| cap.saturating_sub(held));
-                                    let built = match *kwg {
-                                        ArcKwgEither::Node22(ref kwg) => {
-                                            anagrams::ArmTables::build_within(
-                                                kwg,
-                                                &game_config,
-                                                cli.lean,
-                                                room,
-                                            )
-                                        }
-                                        ArcKwgEither::Node24(ref kwg) => {
-                                            anagrams::ArmTables::build_within(
-                                                kwg,
-                                                &game_config,
-                                                cli.lean,
-                                                room,
-                                            )
-                                        }
-                                    };
+                                    let built = anagrams::ArmTables::build_within(
+                                        &kwg,
+                                        &game_config,
+                                        cli.lean,
+                                        room,
+                                    );
                                     match built {
                                         Ok(Some(tables)) => {
                                             held += tables.bytes();
@@ -1434,70 +1415,24 @@ async fn main() -> error::Returns<()> {
                 } else {
                     std::sync::Arc::clone(&no_tables)
                 };
-                match *kwg {
-                    ArcKwgEither::Node22(ref kwg) => do_it(DoItArguments {
-                        nc: &nc,
-                        noleave_klv: &noleave_klv,
-                        msg_received_instant,
-                        option_game_id,
-                        alloc_reply_chan,
-                        reply: reply.clone(),
-                        bot_req,
-                        kwg: kwg.clone(),
-                        klv,
-                        game_config,
-                        tilter,
-                        rack_reader,
-                        play_reader,
-                        option_common_word_kwg: option_common_word_kwg.and_then(|arc_thing| {
-                            match *arc_thing {
-                                ArcKwgEither::Node22(ref common_word_kwg) => {
-                                    Some(common_word_kwg.clone())
-                                }
-                                _ => None,
-                            }
-                        }),
-                        option_common_word_plus_twos_kwg: option_common_word_plus_twos_kwg
-                            .and_then(|arc_thing| match *arc_thing {
-                                ArcKwgEither::Node22(ref common_word_plus_twos_kwg) => {
-                                    Some(common_word_plus_twos_kwg.clone())
-                                }
-                                _ => None,
-                            }),
-                        arm_tables: tables,
-                    }),
-                    ArcKwgEither::Node24(ref kwg) => do_it(DoItArguments {
-                        nc: &nc,
-                        noleave_klv: &noleave_klv,
-                        msg_received_instant,
-                        option_game_id,
-                        alloc_reply_chan,
-                        reply: reply.clone(),
-                        bot_req,
-                        kwg: kwg.clone(),
-                        klv,
-                        game_config,
-                        tilter,
-                        rack_reader,
-                        play_reader,
-                        option_common_word_kwg: option_common_word_kwg.and_then(|arc_thing| {
-                            match *arc_thing {
-                                ArcKwgEither::Node24(ref common_word_kwg) => {
-                                    Some(common_word_kwg.clone())
-                                }
-                                _ => None,
-                            }
-                        }),
-                        option_common_word_plus_twos_kwg: option_common_word_plus_twos_kwg
-                            .and_then(|arc_thing| match *arc_thing {
-                                ArcKwgEither::Node24(ref common_word_plus_twos_kwg) => {
-                                    Some(common_word_plus_twos_kwg.clone())
-                                }
-                                _ => None,
-                            }),
-                        arm_tables: tables,
-                    }),
-                }
+                do_it(DoItArguments {
+                    nc: &nc,
+                    noleave_klv: &noleave_klv,
+                    msg_received_instant,
+                    option_game_id,
+                    alloc_reply_chan,
+                    reply: reply.clone(),
+                    bot_req,
+                    kwg,
+                    klv,
+                    game_config,
+                    tilter,
+                    rack_reader,
+                    play_reader,
+                    option_common_word_kwg,
+                    option_common_word_plus_twos_kwg,
+                    arm_tables: tables,
+                })
             }
         };
     }
@@ -1510,14 +1445,14 @@ struct DoItArguments<
     N: kwg::Node + Send + Sync + 'static,
 > {
     nc: &'a std::sync::Arc<async_nats::Client>,
-    noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node22>>,
+    noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node24>>,
     msg_received_instant: std::time::Instant,
     option_game_id: Option<String>,
     reply: Option<async_nats::Subject>,
     alloc_reply_chan: F,
     bot_req: Box<macondo::BotRequest>,
     kwg: std::sync::Arc<kwg::Kwg<N>>,
-    klv: std::sync::Arc<klv::Klv<kwg::Node22>>,
+    klv: std::sync::Arc<klv::Klv<kwg::Node24>>,
     game_config: std::sync::Arc<game_config::GameConfig>,
     tilter: Option<move_filter::Tilt<'static>>,
     rack_reader: std::sync::Arc<alphabet::AlphabetReader>,

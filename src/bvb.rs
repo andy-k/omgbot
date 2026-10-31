@@ -192,14 +192,24 @@ fn do_it<N: kwg::Node + Sync>(
     let mut num_completed = 0usize;
     while num_completed < num_games {
         // for nostalgic reasons, this uses CSW21.kwg with v1 english.klv
-        let klv = klv::Klv::<kwg::Node22>::from_bytes_alloc(&std::fs::read("english.klv")?)?;
+        let klv = klv::kbwg_from_bytes_alloc(std::fs::read("english.klv")?)?;
         let game_config = game_config::make_english_game_config();
+        game_config.check_klv(&klv)?;
         let dim = game_config.board_layout().dim();
         let alphabet = game_config.alphabet();
         //let rack_reader = new_for_lowercase_racks(alphabet);
         let rack_reader = alphabet::AlphabetReader::new_for_racks(alphabet);
         let play_reader = alphabet::AlphabetReader::new_for_plays(alphabet);
-        let kwg = kwg::Kwg::<N>::from_bytes_alloc(&std::fs::read("CSW21.kwg")?)?;
+        // a kwg file, repacked into the layout the games are played in
+        let mut kwg_bytes = std::fs::read("CSW21.kwg")?;
+        kwg::repack_in_place::<kwg::Node22, N>(&mut kwg_bytes)?;
+        let kwg = kwg::Kwg::<N>::from_bytes_alloc(&kwg_bytes)?;
+        let alphabet_len = alphabet.len();
+        if !kwg.fits_alphabet(alphabet_len) {
+            wolges::return_error!(format!(
+                "CSW21.kwg has tiles past this game's {alphabet_len}"
+            ));
+        }
         let arm_tables = anagrams::ArmTables::build(&kwg, &game_config, lean)?;
         let alphabet_len_without_blank = alphabet.len() - 1;
         let mut available_tally_buf = Vec::new();
@@ -615,5 +625,5 @@ fn main() -> error::Returns<()> {
     env_logger::init();
 
     let cli: Cli = clap::Parser::parse();
-    do_it::<kwg::Node22>(&cli.url, &cli.gametag, &cli.userid, cli.num, cli.lean)
+    do_it::<kwg::Node24>(&cli.url, &cli.gametag, &cli.userid, cli.num, cli.lean)
 }
