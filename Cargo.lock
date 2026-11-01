@@ -2641,6 +2641,7 @@ dependencies = [
  "getrandom 0.4.3",
  "rand 0.10.3",
  "rand_xoshiro",
+ "ryu",
  "serde",
  "serde_json",
 ]
