@@ -1058,6 +1058,10 @@ async fn main() -> error::Returns<()> {
     let german_game_config = std::sync::Arc::new(game_config::make_german_game_config());
     let jumbled_german_game_config =
         std::sync::Arc::new(game_config::make_jumbled_german_game_config());
+    let super_german_game_config =
+        std::sync::Arc::new(game_config::make_super_german_game_config());
+    let jumbled_super_german_game_config =
+        std::sync::Arc::new(game_config::make_jumbled_super_german_game_config());
     let italian_game_config = std::sync::Arc::new(game_config::make_italian_game_config());
     let jumbled_italian_game_config =
         std::sync::Arc::new(game_config::make_jumbled_italian_game_config());
@@ -1214,6 +1218,13 @@ async fn main() -> error::Returns<()> {
             jumbled_super_game_configs.insert(
                 lexicon.to_string(),
                 jumbled_super_english_game_config.clone(),
+            );
+        }
+        if let Language::German = language {
+            super_game_configs.insert(lexicon.to_string(), super_german_game_config.clone());
+            jumbled_super_game_configs.insert(
+                lexicon.to_string(),
+                jumbled_super_german_game_config.clone(),
             );
         }
         rack_readers.insert(
