@@ -827,7 +827,7 @@ fn eval_played_move(
     })
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Language {
     Catalan,
     Dutch,
@@ -841,6 +841,59 @@ enum Language {
     Spanish,
 }
 
+// the lexica it serves, each with its language, and the list each language's
+// common words are cut to, from the file at path beside the lexica. A line a
+// lexicon: its name, then its language (catalan, dutch, english, french,
+// german, italian, norwegian, polish, slovene, or spanish), then "common" for
+// that language's common word list; blank lines skipped
+#[allow(clippy::type_complexity)]
+fn read_lexicons(
+    path: &str,
+) -> error::Returns<(
+    Vec<(String, Language)>,
+    std::collections::HashMap<Language, String>,
+)> {
+    let text = std::fs::read_to_string(path).map_err(|err| format!("{path}: {err}"))?;
+    let mut lexicons = Vec::new();
+    let mut common = std::collections::HashMap::new();
+    for (i, line) in text.lines().enumerate() {
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        let (name, language, is_common) = match fields[..] {
+            [] => continue,
+            [name, language] => (name, language, false),
+            [name, language, "common"] => (name, language, true),
+            _ => {
+                return Err(format!(
+                    "{path}:{}: a name and a language, then \"common\" or nothing, found {line:?}",
+                    i + 1
+                )
+                .into());
+            }
+        };
+        let language = match language {
+            "catalan" => Language::Catalan,
+            "dutch" => Language::Dutch,
+            "english" => Language::English,
+            "french" => Language::French,
+            "german" => Language::German,
+            "italian" => Language::Italian,
+            "norwegian" => Language::Norwegian,
+            "polish" => Language::Polish,
+            "slovene" => Language::Slovene,
+            "spanish" => Language::Spanish,
+            _ => return Err(format!("{path}:{}: no language {language:?}", i + 1).into()),
+        };
+        if lexicons.iter().any(|(other, _)| other == name) {
+            return Err(format!("{path}:{}: {name} a second time", i + 1).into());
+        }
+        if is_common && common.insert(language, name.to_string()).is_some() {
+            return Err(format!("{path}:{}: a second common list for its language", i + 1).into());
+        }
+        lexicons.push((name.to_string(), language));
+    }
+    Ok((lexicons, common))
+}
+
 // what a lexicon's requests read, from the files named after it, read the first
 // time a request names the lexicon
 struct LexiconFiles {
@@ -852,19 +905,10 @@ struct LexiconFiles {
     kads: std::collections::HashMap<String, ArcKwg>,
     common_word_kwgs: std::collections::HashMap<String, ArcKwg>,
     common_word_plus_twos_kwgs: std::collections::HashMap<String, ArcKwg>,
+    common_word_lists: std::collections::HashMap<Language, String>, // each language's (read_lexicons)
 }
 
 impl LexiconFiles {
-    // the word list whose common words a lexicon of this language is cut to
-    #[inline(always)]
-    fn common_word_list(language: Language) -> Option<&'static str> {
-        match language {
-            Language::English => Some("ECWL"),
-            Language::German => Some("CGL"),
-            _ => None,
-        }
-    }
-
     fn read(
         &mut self,
         lexicon: &str,
@@ -954,14 +998,16 @@ impl LexiconFiles {
                 eprintln!("warning: {lexicon}.kad: {err}");
             }
         }
-        let Some(list_name) = Self::common_word_list(language) else {
+        // the word list whose common words a lexicon of this language is cut to
+        let Some(list_name) = self.common_word_lists.get(&language).cloned() else {
             return Ok(());
         };
         if lexicon == list_name {
             return Ok(());
         }
-        self.read(list_name, language, game_config, super_game_config)?;
-        let (Some(list_kwg), Some(kwg)) = (self.kwgs.get(list_name), self.kwgs.get(lexicon)) else {
+        self.read(&list_name, language, game_config, super_game_config)?;
+        let (Some(list_kwg), Some(kwg)) = (self.kwgs.get(&list_name), self.kwgs.get(lexicon))
+        else {
             return Ok(());
         };
         let mut v1 = Vec::<bites::Bites>::new();
@@ -1137,38 +1183,7 @@ async fn main() -> error::Returns<()> {
     let spanish_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         spanish_game_config.alphabet(),
     ));
-    let lexicons = [
-        ("CGL", Language::German),
-        ("CSW15", Language::English),
-        ("CSW19", Language::English),
-        ("CSW19X", Language::English),
-        ("CSW21", Language::English),
-        ("CSW24", Language::English),
-        ("CSW24X", Language::English),
-        ("DISC2", Language::Catalan),
-        ("DSW25", Language::Dutch),
-        ("ECWL", Language::English),
-        ("FILE2017", Language::Spanish),
-        ("FRA20", Language::French),
-        ("FRA24", Language::French),
-        ("NSF21", Language::Norwegian),
-        ("NSF22", Language::Norwegian),
-        ("NSF23", Language::Norwegian),
-        ("NSF25", Language::Norwegian),
-        ("NSF26", Language::Norwegian),
-        ("NSWL20", Language::English),
-        ("NSWL23", Language::English),
-        ("NWL18", Language::English),
-        ("NWL20", Language::English),
-        ("NWL23", Language::English),
-        ("OSPS49", Language::Polish),
-        ("OSPS50", Language::Polish),
-        ("OSPS52", Language::Polish),
-        ("RD28", Language::German),
-        ("RD29", Language::German),
-        ("SLV26", Language::Slovene),
-        ("ZINGA", Language::Italian),
-    ];
+    let (lexicons, common_word_lists) = read_lexicons("lexicons.txt")?;
     let mut game_configs = std::collections::HashMap::new();
     let mut jumbled_game_configs = std::collections::HashMap::new();
     let mut super_game_configs = std::collections::HashMap::new();
@@ -1267,6 +1282,7 @@ async fn main() -> error::Returns<()> {
         kads: std::collections::HashMap::new(),
         common_word_kwgs: std::collections::HashMap::new(),
         common_word_plus_twos_kwgs: std::collections::HashMap::new(),
+        common_word_lists,
     };
     // a lexicon's tables for its classic and super games, built the first time a
     // request needs them
@@ -1297,12 +1313,12 @@ async fn main() -> error::Returns<()> {
             .as_ref()
             .ok()
             .and_then(|bot_req| bot_req.game_history.as_ref())
-            && let Some(&(lexicon, language)) = lexicons
+            && let Some((lexicon, language)) = lexicons
                 .iter()
                 .find(|(lexicon, _)| *lexicon == game_history.lexicon)
             && let Err(err) = files.read(
                 lexicon,
-                language,
+                *language,
                 &game_configs[lexicon],
                 super_game_configs.get(lexicon).map(|config| &**config),
             )

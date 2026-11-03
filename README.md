@@ -20,6 +20,9 @@ https://github.com/domino14/macondo/blob/001a86986f7e73ea4b4544443d7a8a30ffa4f1e
 Generate `*.kwg` and `*.klv` files, put them in current directory when running.
 (Refer to the wolges project.)
 
+List the lexica in `lexicons.txt` there too, a line a lexicon: its name, then
+its language, then `common` for that language's common word list.
+
 ```
 cargo run --release
 ```
