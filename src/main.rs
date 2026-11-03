@@ -1105,6 +1105,7 @@ async fn main() -> error::Returns<()> {
     ));
     let lexicons = [
         ("CGL", Language::German),
+        ("CSW15", Language::English),
         ("CSW19", Language::English),
         ("CSW19X", Language::English),
         ("CSW21", Language::English),
@@ -1119,12 +1120,15 @@ async fn main() -> error::Returns<()> {
         ("NSF22", Language::Norwegian),
         ("NSF23", Language::Norwegian),
         ("NSF25", Language::Norwegian),
+        ("NSF26", Language::Norwegian),
         ("NSWL20", Language::English),
+        ("NSWL23", Language::English),
         ("NWL18", Language::English),
         ("NWL20", Language::English),
         ("NWL23", Language::English),
         ("OSPS49", Language::Polish),
         ("OSPS50", Language::Polish),
+        ("OSPS52", Language::Polish),
         ("RD28", Language::German),
         ("RD29", Language::German),
     ];
