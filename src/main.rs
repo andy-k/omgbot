@@ -830,11 +830,14 @@ fn eval_played_move(
 #[derive(Clone, Copy)]
 enum Language {
     Catalan,
+    Dutch,
     English,
     French,
     German,
+    Italian,
     Norwegian,
     Polish,
+    Slovene,
     Spanish,
 }
 
@@ -1039,6 +1042,9 @@ async fn main() -> error::Returns<()> {
         std::sync::Arc::new(game_config::make_super_catalan_game_config());
     let jumbled_super_catalan_game_config =
         std::sync::Arc::new(game_config::make_jumbled_super_catalan_game_config());
+    let dutch_game_config = std::sync::Arc::new(game_config::make_dutch_game_config());
+    let jumbled_dutch_game_config =
+        std::sync::Arc::new(game_config::make_jumbled_dutch_game_config());
     let english_game_config = std::sync::Arc::new(game_config::make_english_game_config());
     let jumbled_english_game_config =
         std::sync::Arc::new(game_config::make_jumbled_english_game_config());
@@ -1052,17 +1058,26 @@ async fn main() -> error::Returns<()> {
     let german_game_config = std::sync::Arc::new(game_config::make_german_game_config());
     let jumbled_german_game_config =
         std::sync::Arc::new(game_config::make_jumbled_german_game_config());
+    let italian_game_config = std::sync::Arc::new(game_config::make_italian_game_config());
+    let jumbled_italian_game_config =
+        std::sync::Arc::new(game_config::make_jumbled_italian_game_config());
     let norwegian_game_config = std::sync::Arc::new(game_config::make_norwegian_game_config());
     let jumbled_norwegian_game_config =
         std::sync::Arc::new(game_config::make_jumbled_norwegian_game_config());
     let polish_game_config = std::sync::Arc::new(game_config::make_polish_game_config());
     let jumbled_polish_game_config =
         std::sync::Arc::new(game_config::make_jumbled_polish_game_config());
+    let slovene_game_config = std::sync::Arc::new(game_config::make_slovene_game_config());
+    let jumbled_slovene_game_config =
+        std::sync::Arc::new(game_config::make_jumbled_slovene_game_config());
     let spanish_game_config = std::sync::Arc::new(game_config::make_spanish_game_config());
     let jumbled_spanish_game_config =
         std::sync::Arc::new(game_config::make_jumbled_spanish_game_config());
     let catalan_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         catalan_game_config.alphabet(),
+    ));
+    let dutch_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        dutch_game_config.alphabet(),
     ));
     let english_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         english_game_config.alphabet(),
@@ -1073,17 +1088,26 @@ async fn main() -> error::Returns<()> {
     let german_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         german_game_config.alphabet(),
     ));
+    let italian_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        italian_game_config.alphabet(),
+    ));
     let norwegian_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         norwegian_game_config.alphabet(),
     ));
     let polish_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         polish_game_config.alphabet(),
     ));
+    let slovene_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
+        slovene_game_config.alphabet(),
+    ));
     let spanish_rack_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_racks(
         spanish_game_config.alphabet(),
     ));
     let catalan_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         catalan_game_config.alphabet(),
+    ));
+    let dutch_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        dutch_game_config.alphabet(),
     ));
     let english_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         english_game_config.alphabet(),
@@ -1094,11 +1118,17 @@ async fn main() -> error::Returns<()> {
     let german_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         german_game_config.alphabet(),
     ));
+    let italian_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        italian_game_config.alphabet(),
+    ));
     let norwegian_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         norwegian_game_config.alphabet(),
     ));
     let polish_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         polish_game_config.alphabet(),
+    ));
+    let slovene_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
+        slovene_game_config.alphabet(),
     ));
     let spanish_play_reader = std::sync::Arc::new(alphabet::AlphabetReader::new_for_plays(
         spanish_game_config.alphabet(),
@@ -1112,6 +1142,7 @@ async fn main() -> error::Returns<()> {
         ("CSW24", Language::English),
         ("CSW24X", Language::English),
         ("DISC2", Language::Catalan),
+        ("DSW25", Language::Dutch),
         ("ECWL", Language::English),
         ("FILE2017", Language::Spanish),
         ("FRA20", Language::French),
@@ -1131,6 +1162,8 @@ async fn main() -> error::Returns<()> {
         ("OSPS52", Language::Polish),
         ("RD28", Language::German),
         ("RD29", Language::German),
+        ("SLV26", Language::Slovene),
+        ("ZINGA", Language::Italian),
     ];
     let mut game_configs = std::collections::HashMap::new();
     let mut jumbled_game_configs = std::collections::HashMap::new();
@@ -1143,11 +1176,14 @@ async fn main() -> error::Returns<()> {
             lexicon.to_string(),
             match language {
                 Language::Catalan => catalan_game_config.clone(),
+                Language::Dutch => dutch_game_config.clone(),
                 Language::English => english_game_config.clone(),
                 Language::French => french_game_config.clone(),
                 Language::German => german_game_config.clone(),
+                Language::Italian => italian_game_config.clone(),
                 Language::Norwegian => norwegian_game_config.clone(),
                 Language::Polish => polish_game_config.clone(),
+                Language::Slovene => slovene_game_config.clone(),
                 Language::Spanish => spanish_game_config.clone(),
             },
         );
@@ -1155,11 +1191,14 @@ async fn main() -> error::Returns<()> {
             lexicon.to_string(),
             match language {
                 Language::Catalan => jumbled_catalan_game_config.clone(),
+                Language::Dutch => jumbled_dutch_game_config.clone(),
                 Language::English => jumbled_english_game_config.clone(),
                 Language::French => jumbled_french_game_config.clone(),
                 Language::German => jumbled_german_game_config.clone(),
+                Language::Italian => jumbled_italian_game_config.clone(),
                 Language::Norwegian => jumbled_norwegian_game_config.clone(),
                 Language::Polish => jumbled_polish_game_config.clone(),
+                Language::Slovene => jumbled_slovene_game_config.clone(),
                 Language::Spanish => jumbled_spanish_game_config.clone(),
             },
         );
@@ -1181,11 +1220,14 @@ async fn main() -> error::Returns<()> {
             lexicon.to_string(),
             match language {
                 Language::Catalan => catalan_rack_reader.clone(),
+                Language::Dutch => dutch_rack_reader.clone(),
                 Language::English => english_rack_reader.clone(),
                 Language::French => french_rack_reader.clone(),
                 Language::German => german_rack_reader.clone(),
+                Language::Italian => italian_rack_reader.clone(),
                 Language::Norwegian => norwegian_rack_reader.clone(),
                 Language::Polish => polish_rack_reader.clone(),
+                Language::Slovene => slovene_rack_reader.clone(),
                 Language::Spanish => spanish_rack_reader.clone(),
             },
         );
@@ -1193,11 +1235,14 @@ async fn main() -> error::Returns<()> {
             lexicon.to_string(),
             match language {
                 Language::Catalan => catalan_play_reader.clone(),
+                Language::Dutch => dutch_play_reader.clone(),
                 Language::English => english_play_reader.clone(),
                 Language::French => french_play_reader.clone(),
                 Language::German => german_play_reader.clone(),
+                Language::Italian => italian_play_reader.clone(),
                 Language::Norwegian => norwegian_play_reader.clone(),
                 Language::Polish => polish_play_reader.clone(),
+                Language::Slovene => slovene_play_reader.clone(),
                 Language::Spanish => spanish_play_reader.clone(),
             },
         );
