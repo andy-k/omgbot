@@ -842,17 +842,18 @@ enum Language {
 }
 
 // the lexica it serves, each with its language, and the list each language's
+// common words are cut to (read_lexicons's)
+type Lexicons = (
+    Vec<(String, Language)>,
+    std::collections::HashMap<Language, String>,
+);
+
+// the lexica it serves, each with its language, and the list each language's
 // common words are cut to, from the file at path beside the lexica. A line a
 // lexicon: its name, then its language (catalan, dutch, english, french,
 // german, italian, norwegian, polish, slovene, or spanish), then "common" for
 // that language's common word list; blank lines skipped
-#[allow(clippy::type_complexity)]
-fn read_lexicons(
-    path: &str,
-) -> error::Returns<(
-    Vec<(String, Language)>,
-    std::collections::HashMap<Language, String>,
-)> {
+fn read_lexicons(path: &str) -> error::Returns<Lexicons> {
     let text = std::fs::read_to_string(path).map_err(|err| format!("{path}: {err}"))?;
     let mut lexicons = Vec::new();
     let mut common = std::collections::HashMap::new();
