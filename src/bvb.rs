@@ -190,40 +190,39 @@ fn do_it<N: kwg::Node + Sync>(
     let mut total_loss = 0.0f64;
     let mut total_spread = 0i64;
     let mut num_completed = 0usize;
-    while num_completed < num_games {
-        // for nostalgic reasons, this uses CSW21.kwg with v1 english.klv
-        let klv = klv::kbwg_from_bytes_alloc(std::fs::read("english.klv")?)?;
-        let game_config = game_config::make_english_game_config();
-        game_config.check_klv(&klv)?;
-        let dim = game_config.board_layout().dim();
-        let alphabet = game_config.alphabet();
-        //let rack_reader = new_for_lowercase_racks(alphabet);
-        let rack_reader = alphabet::AlphabetReader::new_for_racks(alphabet);
-        let play_reader = alphabet::AlphabetReader::new_for_plays(alphabet);
-        // a kwg file, repacked into the layout the games are played in
-        let mut kwg_bytes = std::fs::read("CSW21.kwg")?;
-        kwg::repack_in_place::<kwg::Node22, N>(&mut kwg_bytes)?;
-        let kwg = kwg::Kwg::<N>::from_bytes_alloc(&kwg_bytes)?;
-        let alphabet_len = alphabet.len();
-        if !kwg.fits_alphabet(alphabet_len) {
-            wolges::return_error!(format!(
-                "CSW21.kwg has tiles past this game's {alphabet_len}"
-            ));
-        }
-        let arm_tables = anagrams::ArmTables::build(&kwg, &game_config, lean)?;
-        let alphabet_len_without_blank = alphabet.len() - 1;
-        let mut available_tally_buf = Vec::new();
-        let mut game_state = game_state::GameState::new(&game_config);
-        let mut move_generator = movegen::KurniaMoveGenerator::new(&game_config);
-        let mut move_filter = move_filter::GenMoves::Unfiltered;
-        let mut move_picker = move_picker::MovePicker::Hasty;
-        let mut move_to_send_buf = String::new();
+    // the files, the tables, the buffers, and the client every game uses,
+    // made once for the run
+    // for nostalgic reasons, this uses CSW21.kwg with v1 english.klv
+    let klv = klv::kbwg_from_bytes_alloc(std::fs::read("english.klv")?)?;
+    let game_config = game_config::make_english_game_config();
+    game_config.check_klv(&klv)?;
+    let dim = game_config.board_layout().dim();
+    let alphabet = game_config.alphabet();
+    //let rack_reader = new_for_lowercase_racks(alphabet);
+    let rack_reader = alphabet::AlphabetReader::new_for_racks(alphabet);
+    let play_reader = alphabet::AlphabetReader::new_for_plays(alphabet);
+    // a kwg file, repacked into the layout the games are played in
+    let mut kwg_bytes = std::fs::read("CSW21.kwg")?;
+    kwg::repack_in_place::<kwg::Node22, N>(&mut kwg_bytes)?;
+    let kwg = kwg::Kwg::<N>::from_bytes_alloc(&kwg_bytes)?;
+    let alphabet_len = alphabet.len();
+    if !kwg.fits_alphabet(alphabet_len) {
+        wolges::return_error!(format!(
+            "CSW21.kwg has tiles past this game's {alphabet_len}"
+        ));
+    }
+    let arm_tables = anagrams::ArmTables::build(&kwg, &game_config, lean)?;
+    let alphabet_len_without_blank = alphabet.len() - 1;
+    let mut available_tally_buf = Vec::new();
+    let mut game_state = game_state::GameState::new(&game_config);
+    let mut move_generator = movegen::KurniaMoveGenerator::new(&game_config);
+    let mut move_filter = move_filter::GenMoves::Unfiltered;
+    let mut move_picker = move_picker::MovePicker::Hasty;
+    let mut move_to_send_buf = String::new();
 
-        let mut place_tiles_buf = Vec::new();
-        let mut place_tiles = |board_tiles: &mut [u8],
-                               event: &str,
-                               kwg: Option<&kwg::Kwg<N>>|
-         -> error::Returns<bool> {
+    let mut place_tiles_buf = Vec::new();
+    let mut place_tiles =
+        |board_tiles: &mut [u8], event: &str, kwg: Option<&kwg::Kwg<N>>| -> error::Returns<bool> {
             // event is of the format 9I:SO.UwU
 
             let (coord_token, played_tiles_token) =
@@ -301,8 +300,10 @@ fn do_it<N: kwg::Node + Sync>(
             Ok(true)
         };
 
-        let client = reqwest::blocking::Client::builder().timeout(None).build()?;
+    let client = reqwest::blocking::Client::builder().timeout(None).build()?;
 
+    let mut rack = Vec::new();
+    while num_completed < num_games {
         let gameid = check_ok(
             client
                 .post(format!("{url}/games"))
@@ -317,7 +318,6 @@ fn do_it<N: kwg::Node + Sync>(
         info!("gameid={gameid}");
         // assume no need to encode the gameid
 
-        let mut rack = Vec::new();
         loop {
             if false {
                 show_all(&client, url, &gameid)?; // anyone's turn
