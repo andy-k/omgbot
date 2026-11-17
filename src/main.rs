@@ -162,7 +162,7 @@ struct ElucubrateArguments<
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
     option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
     option_common_word_plus_twos_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
-    arm_tables: &'a anagrams::ArmTables,
+    arm_tables: &'a std::sync::Arc<anagrams::ArmTables>,
 }
 
 #[expect(deprecated)]
@@ -238,7 +238,7 @@ async fn elucubrate<
         &alphabet::Alphabet,
         bool,
     ) -> error::Returns<bool>,
-    N: kwg::Node + Send + Sync,
+    N: kwg::Node + Send + Sync + 'static,
 >(
     ElucubrateArguments {
         bot_req,
@@ -388,6 +388,7 @@ async fn elucubrate<
                     sim_threads: 1,
                     win_pct_table: None,
                     quiet: false,
+                    memory: None,
                 },
             )?)),
             false,
