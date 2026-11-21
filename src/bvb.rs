@@ -389,8 +389,13 @@ fn do_it<N: kwg::Node + Sync + 'static>(
             {
                 // rebuild the state
                 game_state.reset();
-                game_state.players[0].score = my_score;
-                game_state.players[1].score = your_score;
+                for (player, points) in game_state.players.iter_mut().zip([my_score, your_score]) {
+                    player.score = equity::Equity::new(
+                        points
+                            .checked_mul(equity::SCALE)
+                            .ok_or("game score out of range")?,
+                    );
+                }
 
                 let mut last_tile_placement = !0;
                 for (i, event) in event_lines.iter().enumerate() {
@@ -471,18 +476,17 @@ fn do_it<N: kwg::Node + Sync + 'static>(
             display::print_game_state(&game_config, &game_state, None)?;
 
             if !is_ongoing {
-                let score0 = game_state.players[0].score; // always our score
-                let score1 = game_state.players[1].score; // always opponent's score
+                let (score0, score1) = (my_score, your_score);
                 let (this_win, this_loss) = match score0.cmp(&score1) {
                     std::cmp::Ordering::Greater => (1.0, 0.0),
                     std::cmp::Ordering::Less => (0.0, 1.0),
                     std::cmp::Ordering::Equal => (0.5, 0.5),
                 };
-                let this_spread = score0 - score1;
+                let this_spread = i64::from(score0) - i64::from(score1);
                 if this_game_counts {
                     total_win += this_win;
                     total_loss += this_loss;
-                    total_spread += this_spread as i64;
+                    total_spread += this_spread;
                     num_completed += 1;
                     info!(
                         "Result: Game {num_completed}: {score0}-{score1} ({this_win}-{this_loss} {this_spread}), Total: {total_win}-{total_loss} {total_spread}"

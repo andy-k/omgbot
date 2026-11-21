@@ -45,6 +45,14 @@ fn parse_rack(
     alphabet_reader.set_word(s, v)
 }
 
+fn macondo_score(points: i32) -> error::Returns<equity::Equity> {
+    Ok(equity::Equity::new(
+        points
+            .checked_mul(equity::SCALE)
+            .ok_or("game score out of range")?,
+    ))
+}
+
 // the word a placement forms along its line, each tile it plays through read
 // off the board, a blank as its letter in lowercase
 fn main_word(
@@ -264,7 +272,8 @@ async fn elucubrate<
     let mut last_tile_placement = !0;
     let alphabet = game_config.alphabet();
     for (i, event) in game_history.events.iter().enumerate() {
-        game_state.players[determine_player_index(event, game_history)].score = event.cumulative;
+        game_state.players[determine_player_index(event, game_history)].score =
+            macondo_score(event.cumulative)?;
         match event.r#type() {
             macondo::game_event::Type::PhonyTilesReturned => {
                 last_tile_placement = !0;
@@ -510,7 +519,7 @@ async fn elucubrate<
                 main_word(alphabet, &game_state.board_tiles, &strider, *idx, word);
             // Play scores are premultiplied by equity::SCALE (millipoints); the
             // GameEvent score is in whole points.
-            game_event.score = equity::descale_score(*score);
+            game_event.score = equity::descale_score(score.raw());
         }
     }
     Ok(Some((game_event, would_sleep && can_sleep)))
@@ -752,6 +761,7 @@ fn eval_played_move(
                     (false, event.row as i8, event.column as i8)
                 }
             };
+            let played_score = macondo_score(event.score)?;
             let mut found = (equity::Equity::ZERO, None);
             for (ix, vm) in plays.iter().enumerate() {
                 if let movegen::Play::Place {
@@ -761,18 +771,14 @@ fn eval_played_move(
                     word: w,
                     score: s,
                 } = &vm.play
+                    && *d == down
+                    && *l == lane
+                    && *x == idx
+                    && *s == played_score
+                    && w[..] == word_buf[..]
                 {
-                    // Play scores are premultiplied by equity::SCALE (millipoints);
-                    // the history event score is in whole points.
-                    if *d == down
-                        && *l == lane
-                        && *x == idx
-                        && *s == event.score * equity::SCALE
-                        && w[..] == word_buf[..]
-                    {
-                        found = (vm.equity, Some(ix));
-                        break;
-                    }
+                    found = (vm.equity, Some(ix));
+                    break;
                 }
             }
             (found.0, found.1, placed_count(word_buf) == rack_size)
@@ -1809,6 +1815,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn macondo_scores_enter_the_engine_in_millipoints() {
+        assert_eq!(macondo_score(321).unwrap().raw(), 321_000);
+        assert_eq!(macondo_score(-7).unwrap().raw(), -7_000);
+        assert!(macondo_score(i32::MAX).is_err());
+    }
+
+    #[test]
     fn the_best_moves_word_reads_the_board_with_a_blank_in_lowercase() {
         let game_config = game_config::make_english_game_config();
         let alphabet = game_config.alphabet();
@@ -1826,7 +1839,7 @@ mod tests {
                 lane: 7,
                 idx: 3,
                 word: [0x80u8 | 17, 0, 9, 26][..].into(),
-                score: 33 * equity::SCALE,
+                score: equity::Points::new(33).scaled(),
             },
         };
         let exchange = movegen::ValuedMove {
