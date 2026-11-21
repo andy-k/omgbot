@@ -5,3 +5,4 @@ macondo.proto
 *.klv
 *.klv2
 *.kad
+/data
