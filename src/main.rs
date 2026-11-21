@@ -159,13 +159,13 @@ struct ElucubrateArguments<
 > {
     bot_req: Box<macondo::BotRequest>,
     tilter: Option<wolges::move_filter::Tilt<'a>>,
-    game_state: game_state::GameState,
+    game_state: &'a mut game_state::GameState,
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg<N>>,
     game_config: &'a std::sync::Arc<game_config::GameConfig>,
     klv: &'a std::sync::Arc<klv::Klv<kwg::Node24>>,
     noleave_klv: &'a std::sync::Arc<klv::Klv<kwg::Node24>>,
-    move_generator: movegen::KurniaMoveGenerator,
+    move_generator: &'a mut movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
     option_common_word_kwg: Option<std::sync::Arc<kwg::Kwg<N>>>,
@@ -251,13 +251,13 @@ async fn elucubrate<
     ElucubrateArguments {
         bot_req,
         tilter,
-        mut game_state,
+        game_state,
         mut place_tiles,
         kwg,
         game_config,
         klv,
         noleave_klv,
-        mut move_generator,
+        move_generator,
         is_jumbled,
         rack_reader,
         option_common_word_kwg,
@@ -460,9 +460,9 @@ async fn elucubrate<
 
     move_picker.pick_a_move(
         &mut move_filter,
-        &mut move_generator,
+        move_generator,
         board_snapshot,
-        &game_state,
+        game_state,
         if pass_or_challenge {
             &[]
         } else {
@@ -537,12 +537,12 @@ struct EvaluateArguments<
     N: kwg::Node + Send,
 > {
     bot_req: Box<macondo::BotRequest>,
-    game_state: game_state::GameState,
+    game_state: &'a mut game_state::GameState,
     place_tiles: PlaceTilesType,
     kwg: &'a std::sync::Arc<kwg::Kwg<N>>,
     game_config: &'a std::sync::Arc<game_config::GameConfig>,
     klv: &'a std::sync::Arc<klv::Klv<kwg::Node24>>,
-    move_generator: movegen::KurniaMoveGenerator,
+    move_generator: &'a mut movegen::KurniaMoveGenerator,
     is_jumbled: bool,
     rack_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
     play_reader: &'a std::sync::Arc<alphabet::AlphabetReader>,
@@ -565,12 +565,12 @@ async fn evaluate<
 >(
     EvaluateArguments {
         bot_req,
-        mut game_state,
+        game_state,
         mut place_tiles,
         kwg,
         game_config,
         klv,
-        mut move_generator,
+        move_generator,
         is_jumbled,
         rack_reader,
         play_reader,
@@ -1527,6 +1527,48 @@ async fn main() -> error::Returns<()> {
     Ok(())
 }
 
+// one idle workspace for the request path. A request keeps its workspace while
+// it runs, without holding the pool's lock.
+struct RequestWorkspace {
+    config: std::sync::Arc<game_config::GameConfig>,
+    state: game_state::GameState,
+    generator: movegen::KurniaMoveGenerator,
+}
+
+#[derive(Default)]
+struct RequestWorkspaces {
+    idle: std::sync::Mutex<Option<RequestWorkspace>>,
+}
+
+impl RequestWorkspaces {
+    fn take(&self, config: &std::sync::Arc<game_config::GameConfig>) -> RequestWorkspace {
+        let idle = self.idle.lock().unwrap().take();
+        if let Some(mut workspace) = idle
+            && std::sync::Arc::ptr_eq(&workspace.config, config)
+        {
+            workspace.generator.reset_for_another_kwg();
+            return workspace;
+        }
+        RequestWorkspace {
+            config: std::sync::Arc::clone(config),
+            state: game_state::GameState::new(config),
+            generator: movegen::KurniaMoveGenerator::new(config),
+        }
+    }
+
+    fn put(&self, mut workspace: RequestWorkspace) {
+        workspace.generator.plays.clear();
+        let mut idle = self.idle.lock().unwrap();
+        if idle.is_none() {
+            *idle = Some(workspace);
+        }
+    }
+}
+
+static REQUEST_WORKSPACES: RequestWorkspaces = RequestWorkspaces {
+    idle: std::sync::Mutex::new(None),
+};
+
 struct DoItArguments<
     'a,
     F: Fn(String) -> String + Send + 'static,
@@ -1575,8 +1617,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
     let nc = std::sync::Arc::clone(nc);
     let noleave_klv = std::sync::Arc::clone(noleave_klv);
     tokio::spawn(async move {
-        let game_state = game_state::GameState::new(&game_config);
-        let move_generator = movegen::KurniaMoveGenerator::new(&game_config);
+        let mut workspace = REQUEST_WORKSPACES.take(&game_config);
         let mut buf = Vec::new();
         let mut can_sleep = false;
         let mut should_reply = true;
@@ -1724,12 +1765,12 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 can_sleep = false;
                 let eval_result = evaluate(EvaluateArguments {
                     bot_req,
-                    game_state,
+                    game_state: &mut workspace.state,
                     place_tiles,
                     kwg: &kwg,
                     game_config: &game_config,
                     klv: &klv,
-                    move_generator,
+                    move_generator: &mut workspace.generator,
                     is_jumbled,
                     rack_reader: &rack_reader,
                     play_reader: &play_reader,
@@ -1748,13 +1789,13 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 let game_event_result = elucubrate(ElucubrateArguments {
                     bot_req,
                     tilter,
-                    game_state,
+                    game_state: &mut workspace.state,
                     place_tiles,
                     kwg: &kwg,
                     game_config: &game_config,
                     klv: &klv,
                     noleave_klv: &noleave_klv,
-                    move_generator,
+                    move_generator: &mut workspace.generator,
                     is_jumbled,
                     rack_reader: &rack_reader,
                     option_common_word_kwg,
@@ -1786,6 +1827,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 println!("{buf:?}");
             }
         }
+        REQUEST_WORKSPACES.put(workspace);
         if should_reply {
             if can_sleep {
                 let time_for_move_ms: u128 =
@@ -1813,6 +1855,24 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requests_reuse_the_workspace_for_the_same_config() {
+        let pool = RequestWorkspaces::default();
+        let classic = std::sync::Arc::new(game_config::make_english_game_config());
+        let super_board = std::sync::Arc::new(game_config::make_super_english_game_config());
+        let mut first = pool.take(&classic);
+        first.generator.plays.reserve(16);
+        let plays = first.generator.plays.as_ptr();
+        let board = first.state.board_tiles.as_ptr();
+        pool.put(first);
+
+        let again = pool.take(&classic);
+        assert_eq!(again.generator.plays.as_ptr(), plays);
+        assert_eq!(again.state.board_tiles.as_ptr(), board);
+        pool.put(again);
+        assert_eq!(pool.take(&super_board).state.board_tiles.len(), 21 * 21);
+    }
 
     #[test]
     fn macondo_scores_enter_the_engine_in_millipoints() {
