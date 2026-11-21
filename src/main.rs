@@ -1339,9 +1339,11 @@ async fn main() -> error::Returns<()> {
             option_common_word_kwg: Option<ArcKwg>,
             option_common_word_plus_twos_kwg: Option<ArcKwg>,
         }
+        let mut request_id = String::new();
         let recycled_stuffs = (|| -> error::Returns<RecycledStuffs<'_>> {
-            let bot_req = Box::new(bot_req?);
+            let mut bot_req = Box::new(bot_req?);
             println!("{bot_req:?}");
+            request_id = std::mem::take(&mut bot_req.request_id);
 
             let game_history = bot_req.game_history.as_ref().ok_or("need a game history")?;
             if game_history.players.len() != 2
@@ -1416,6 +1418,7 @@ async fn main() -> error::Returns<()> {
                     let bot_resp = macondo::BotResponse {
                         response: Some(macondo::bot_response::Response::Error(err.to_string())),
                         game_id: option_game_id.clone().unwrap_or("".to_string()), // does not seem to be used by liwords
+                        request_id,
                         ..Default::default()
                     };
                     println!("{bot_resp:?}");
@@ -1500,6 +1503,7 @@ async fn main() -> error::Returns<()> {
                     option_game_id,
                     alloc_reply_chan,
                     reply: reply.clone(),
+                    request_id,
                     bot_req,
                     kwg,
                     klv,
@@ -1528,6 +1532,7 @@ struct DoItArguments<
     option_game_id: Option<String>,
     reply: Option<async_nats::Subject>,
     alloc_reply_chan: F,
+    request_id: String,
     bot_req: Box<macondo::BotRequest>,
     kwg: std::sync::Arc<kwg::Kwg<N>>,
     klv: std::sync::Arc<klv::Klv<kwg::Node24>>,
@@ -1548,6 +1553,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
         option_game_id,
         reply,
         alloc_reply_chan,
+        request_id,
         bot_req,
         kwg,
         klv,
@@ -1707,7 +1713,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 game_config::GameRules::Classic => false,
                 game_config::GameRules::Jumbled => true,
             };
-            let bot_resp = if bot_req.evaluation_request.is_some() {
+            let mut bot_resp = if bot_req.evaluation_request.is_some() {
                 // Evaluation requests never sleep and always reply.
                 can_sleep = false;
                 let eval_result = evaluate(EvaluateArguments {
@@ -1730,6 +1736,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                     },
                     eval: eval_result.ok(),
                     game_id: option_game_id.clone().unwrap_or("".to_string()),
+                    ..Default::default()
                 }
             } else {
                 let game_event_result = elucubrate(ElucubrateArguments {
@@ -1767,6 +1774,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 }
             };
             if should_reply {
+                bot_resp.request_id = request_id;
                 println!("{bot_resp:?}");
                 bot_resp.encode(&mut buf).unwrap();
                 println!("{buf:?}");
