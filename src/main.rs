@@ -1527,8 +1527,9 @@ async fn main() -> error::Returns<()> {
     Ok(())
 }
 
-// one idle workspace for the request path. A request keeps its workspace while
-// it runs, without holding the pool's lock.
+// idle workspaces for the request path, at most one for each thread that can
+// run a request at once. A request keeps its workspace while it runs, without
+// holding the pool's lock, and takes an idle one made for its config.
 struct RequestWorkspace {
     config: std::sync::Arc<game_config::GameConfig>,
     state: game_state::GameState,
@@ -1537,15 +1538,24 @@ struct RequestWorkspace {
 
 #[derive(Default)]
 struct RequestWorkspaces {
-    idle: std::sync::Mutex<Option<RequestWorkspace>>,
+    idle: std::sync::Mutex<Vec<RequestWorkspace>>,
+}
+
+// as many idle workspaces as the runtime has threads to run requests on
+fn idle_workspaces_cap() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| n.get())
 }
 
 impl RequestWorkspaces {
     fn take(&self, config: &std::sync::Arc<game_config::GameConfig>) -> RequestWorkspace {
-        let idle = self.idle.lock().unwrap().take();
-        if let Some(mut workspace) = idle
-            && std::sync::Arc::ptr_eq(&workspace.config, config)
-        {
+        let idle = {
+            let mut idle = self.idle.lock().unwrap();
+            (idle
+                .iter()
+                .rposition(|workspace| std::sync::Arc::ptr_eq(&workspace.config, config)))
+            .map(|at| idle.swap_remove(at))
+        };
+        if let Some(mut workspace) = idle {
             workspace.generator.reset_for_another_kwg();
             return workspace;
         }
@@ -1559,14 +1569,14 @@ impl RequestWorkspaces {
     fn put(&self, mut workspace: RequestWorkspace) {
         workspace.generator.plays.clear();
         let mut idle = self.idle.lock().unwrap();
-        if idle.is_none() {
-            *idle = Some(workspace);
+        if idle.len() < idle_workspaces_cap() {
+            idle.push(workspace);
         }
     }
 }
 
 static REQUEST_WORKSPACES: RequestWorkspaces = RequestWorkspaces {
-    idle: std::sync::Mutex::new(None),
+    idle: std::sync::Mutex::new(Vec::new()),
 };
 
 struct DoItArguments<
@@ -1872,6 +1882,31 @@ mod tests {
         assert_eq!(again.state.board_tiles.as_ptr(), board);
         pool.put(again);
         assert_eq!(pool.take(&super_board).state.board_tiles.len(), 21 * 21);
+    }
+
+    // requests run at once each take a workspace of their own, and each is
+    // kept for later requests, up to one for each thread that can run one
+    #[test]
+    fn concurrent_requests_keep_their_workspaces_up_to_the_cap() {
+        let pool = RequestWorkspaces::default();
+        let classic = std::sync::Arc::new(game_config::make_english_game_config());
+        let cap = idle_workspaces_cap();
+        let taken = (0..=cap).map(|_| pool.take(&classic)).collect::<Vec<_>>();
+        let mut boards = (taken.iter())
+            .map(|workspace| workspace.state.board_tiles.as_ptr())
+            .collect::<Vec<_>>();
+        boards.sort_unstable();
+        boards.dedup();
+        assert_eq!(boards.len(), cap + 1, "each its own");
+        for workspace in taken {
+            pool.put(workspace);
+        }
+        assert_eq!(pool.idle.lock().unwrap().len(), cap);
+        let again = (0..cap).map(|_| pool.take(&classic)).collect::<Vec<_>>();
+        assert!(
+            (again.iter()).all(|workspace| boards.contains(&workspace.state.board_tiles.as_ptr()))
+        );
+        assert!(pool.idle.lock().unwrap().is_empty());
     }
 
     #[test]
