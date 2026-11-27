@@ -221,84 +221,85 @@ fn do_it<N: kwg::Node + Sync + 'static>(
     let mut move_to_send_buf = String::new();
 
     let mut place_tiles_buf = Vec::new();
-    let mut place_tiles =
-        |board_tiles: &mut [u8], event: &str, kwg: Option<&kwg::Kwg<N>>| -> error::Returns<bool> {
-            // event is of the format 9I:SO.UwU
+    let mut place_tiles = |board_tiles: &mut [u8],
+                           event: &str,
+                           kwg: Option<&kwg::Kwg<N>>|
+     -> error::Returns<bool> {
+        // event is of the format 9I:SO.UwU
 
-            let (coord_token, played_tiles_token) =
-                event.split_once(':').ok_or(format!("no : in {event:?}"))?;
-            let coord =
-                parse_coord_token(coord_token, dim).ok_or(format!("invalid coord in {event:?}"))?;
-            let (strider, lane, idx) = (dim.lane(coord.down, coord.lane), coord.lane, coord.idx);
-            parse_played_tiles(&play_reader, played_tiles_token, &mut place_tiles_buf)?;
-            // note: not checking if first move covers star or if it connects
-            if place_tiles_buf.len() < 2 || !place_tiles_buf.iter().any(|&t| t != 0) {
-                wolges::return_error!("not enough tiles played".into());
+        let (coord_token, played_tiles_token) =
+            event.split_once(':').ok_or(format!("no : in {event:?}"))?;
+        let coord =
+            parse_coord_token(coord_token, dim).ok_or(format!("invalid coord in {event:?}"))?;
+        let (strider, lane, idx) = (dim.lane(coord.down, coord.lane), coord.lane, coord.idx);
+        parse_played_tiles(&play_reader, played_tiles_token, &mut place_tiles_buf)?;
+        // note: not checking if first move covers star or if it connects
+        if place_tiles_buf.len() < 2 || !place_tiles_buf.iter().any(|&t| t != 0) {
+            wolges::return_error!("not enough tiles played".into());
+        }
+        if idx > 0 && board_tiles[strider.at(idx - 1)?] != 0 {
+            wolges::return_error!("has prefix".into());
+        }
+        let end_idx = idx as usize + place_tiles_buf.len();
+        match end_idx.cmp(&(strider.len() as usize)) {
+            std::cmp::Ordering::Greater => {
+                wolges::return_error!("out of bounds".into());
             }
-            if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
-                wolges::return_error!("has prefix".into());
-            }
-            let end_idx = idx as usize + place_tiles_buf.len();
-            match end_idx.cmp(&(strider.len() as usize)) {
-                std::cmp::Ordering::Greater => {
-                    wolges::return_error!("out of bounds".into());
+            std::cmp::Ordering::Less => {
+                if board_tiles[strider.at(end_idx as i8)?] != 0 {
+                    wolges::return_error!("has suffix".into());
                 }
-                std::cmp::Ordering::Less => {
-                    if board_tiles[strider.at(end_idx as i8)] != 0 {
-                        wolges::return_error!("has suffix".into());
-                    }
-                }
-                std::cmp::Ordering::Equal => {}
             }
+            std::cmp::Ordering::Equal => {}
+        }
+        for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
+            let j = strider.at(i)?;
+            if tile == 0 {
+                if board_tiles[j] == 0 {
+                    wolges::return_error!("playing through vacant board".into());
+                }
+            } else if board_tiles[j] != 0 {
+                wolges::return_error!("board not vacant for non-played-through tile".into());
+            } else {
+                board_tiles[j] = tile;
+            }
+        }
+        if let Some(kwg) = kwg {
+            let mut p_main = 0; // dawg
             for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                let j = strider.at(i);
-                if tile == 0 {
-                    if board_tiles[j] == 0 {
-                        wolges::return_error!("playing through vacant board".into());
+                let b = board_tiles[strider.at(i)?];
+                p_main = kwg.seek(p_main, b & 0x7f);
+                if tile != 0 {
+                    let perpendicular_strider = dim.lane(!coord.down, i);
+                    let mut j = lane;
+                    while j > 0 && board_tiles[perpendicular_strider.at(j - 1)?] != 0 {
+                        j -= 1;
                     }
-                } else if board_tiles[j] != 0 {
-                    wolges::return_error!("board not vacant for non-played-through tile".into());
-                } else {
-                    board_tiles[j] = tile;
-                }
-            }
-            if let Some(kwg) = kwg {
-                let mut p_main = 0; // dawg
-                for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                    let b = board_tiles[strider.at(i)];
-                    p_main = kwg.seek(p_main, b & 0x7f);
-                    if tile != 0 {
-                        let perpendicular_strider = dim.lane(!coord.down, i);
-                        let mut j = lane;
-                        while j > 0 && board_tiles[perpendicular_strider.at(j - 1)] != 0 {
-                            j -= 1;
+                    let perpendicular_strider_len = perpendicular_strider.len();
+                    if j < lane
+                        || (j + 1 < perpendicular_strider_len
+                            && board_tiles[perpendicular_strider.at(j + 1)?] != 0)
+                    {
+                        let mut p_perpendicular = 0;
+                        for j in j..perpendicular_strider_len {
+                            let perpendicular_tile = board_tiles[perpendicular_strider.at(j)?];
+                            if perpendicular_tile == 0 {
+                                break;
+                            }
+                            p_perpendicular = kwg.seek(p_perpendicular, perpendicular_tile & 0x7f);
                         }
-                        let perpendicular_strider_len = perpendicular_strider.len();
-                        if j < lane
-                            || (j + 1 < perpendicular_strider_len
-                                && board_tiles[perpendicular_strider.at(j + 1)] != 0)
-                        {
-                            let mut p_perpendicular = 0;
-                            for j in j..perpendicular_strider_len {
-                                let perpendicular_tile = board_tiles[perpendicular_strider.at(j)];
-                                if perpendicular_tile == 0 {
-                                    break;
-                                }
-                                p_perpendicular =
-                                    kwg.seek(p_perpendicular, perpendicular_tile & 0x7f);
-                            }
-                            if p_perpendicular < 0 || !kwg[p_perpendicular].accepts() {
-                                return Ok(false);
-                            }
+                        if p_perpendicular < 0 || !kwg.node(p_perpendicular)?.accepts() {
+                            return Ok(false);
                         }
                     }
                 }
-                if p_main < 0 || !kwg[p_main].accepts() {
-                    return Ok(false);
-                }
             }
-            Ok(true)
-        };
+            if p_main < 0 || !kwg.node(p_main)?.accepts() {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    };
 
     let client = reqwest::blocking::Client::builder().timeout(None).build()?;
 
@@ -507,7 +508,7 @@ fn do_it<N: kwg::Node + Sync + 'static>(
                 let board_snapshot = &movegen::BoardSnapshot {
                     board_tiles: &game_state.board_tiles,
                     game_config: &game_config,
-                    kwg: &kwg,
+                    graphs: movegen::KwgForMovegen::new(&game_config, Some(&kwg), None)?,
                     anagrams: arm_tables.anagrams(),
                     rack_lengths: arm_tables.rack_lengths(),
                     klv: &klv,
@@ -542,9 +543,9 @@ fn do_it<N: kwg::Node + Sync + 'static>(
                         score: _,
                     } => {
                         if *down {
-                            write!(move_to_send_buf, "{}{}:", display::column(*lane), idx + 1)?;
+                            write!(move_to_send_buf, "{}{}:", display::column(*lane)?, idx + 1)?;
                         } else {
-                            write!(move_to_send_buf, "{}{}:", lane + 1, display::column(*idx))?;
+                            write!(move_to_send_buf, "{}{}:", lane + 1, display::column(*idx)?)?;
                         }
                         for &tile in word.iter() {
                             if tile == 0 {
@@ -556,13 +557,13 @@ fn do_it<N: kwg::Node + Sync + 'static>(
                     }
                 };
 
-                info!("Playing: {}", play.fmt(board_snapshot));
+                info!("Playing: {}", play.fmt(board_snapshot)?);
                 RNG.with(|rng| {
                     let mut rng = rng.borrow_mut();
                     game_state.bag.shuffle(&mut *rng);
                     game_state.play(&game_config, &mut *rng, play)
                 })?;
-                game_state.next_turn(); // for display
+                game_state.next_turn()?; // for display
                 // bag is displayed unsorted
                 display::print_game_state(&game_config, &game_state, None)?;
             }

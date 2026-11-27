@@ -61,16 +61,16 @@ fn main_word(
     strider: &matrix::Strider,
     idx: i8,
     word: &[u8],
-) -> String {
+) -> error::Returns<String> {
     let mut s = String::new();
     for (i, &tile) in (idx..).zip(word.iter()) {
         let mut shown_tile = tile;
         if shown_tile == 0 {
-            shown_tile = board_tiles[strider.at(i)];
+            shown_tile = board_tiles[strider.at(i)?];
         }
         s.push_str(alphabet.of_board(shown_tile).unwrap());
     }
-    s
+    Ok(s)
 }
 
 // every word graph, kad, and leave table is held in kbwg's layout, the one the
@@ -90,28 +90,46 @@ fn refuse_a_wider_graph(
     Ok(kwg)
 }
 
-fn each_word_raw<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
+// the graphs a game's word graph gives move generation: its kad under jumbled
+// rules, else its kwg
+fn graphs_of<'a, N: kwg::Node>(
+    game_config: &game_config::GameConfig,
+    words: &'a kwg::Kwg<N>,
+    is_jumbled: bool,
+) -> error::Returns<movegen::KwgForMovegen<'a, N>> {
+    if is_jumbled {
+        movegen::KwgForMovegen::new(game_config, None, Some(words))
+    } else {
+        movegen::KwgForMovegen::new(game_config, Some(words), None)
+    }
+}
+
+fn each_word_raw<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) -> error::Returns<()> {
     struct Env<'a, F: FnMut(&[u8]), N: kwg::Node> {
         g: &'a kwg::Kwg<N>,
         v: &'a mut Vec<u8>,
         f: F,
     }
-    fn iter<F: FnMut(&[u8]), N: kwg::Node>(env: &mut Env<'_, F, N>, mut p: i32) {
+    fn iter<F: FnMut(&[u8]), N: kwg::Node>(
+        env: &mut Env<'_, F, N>,
+        mut p: i32,
+    ) -> error::Returns<()> {
         loop {
-            let t = env.g[p].tile();
-            env.v.push(t);
-            if env.g[p].accepts() {
+            let node = env.g.node(p)?;
+            env.v.push(node.tile());
+            if node.accepts() {
                 (env.f)(env.v);
             }
-            if env.g[p].arc_index() != 0 {
-                iter(env, env.g[p].arc_index());
+            if node.arc_index() != 0 {
+                iter(env, node.arc_index())?;
             }
             env.v.pop();
-            if env.g[p].is_end() {
+            if node.is_end() {
                 break;
             }
             p += 1;
         }
+        Ok(())
     }
     iter(
         &mut Env {
@@ -119,11 +137,11 @@ fn each_word_raw<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) {
             v: &mut Vec::new(),
             f,
         },
-        g[0].arc_index(),
-    );
+        g.node(0)?.arc_index(),
+    )
 }
 
-fn each_word<F: FnMut(&[u8])>(g: &kwg::Kwg<kwg::Node24>, f: F) {
+fn each_word<F: FnMut(&[u8])>(g: &kwg::Kwg<kwg::Node24>, f: F) -> error::Returns<()> {
     each_word_raw(g, f)
 }
 
@@ -449,7 +467,7 @@ async fn elucubrate<
     let board_snapshot = &movegen::BoardSnapshot {
         board_tiles: &game_state.board_tiles,
         game_config,
-        kwg: used_kwg,
+        graphs: graphs_of(game_config, used_kwg, is_jumbled)?,
         anagrams: arm_tables.anagrams(),
         rack_lengths: arm_tables.rack_lengths(),
         klv: match bot_req.bot_type() {
@@ -471,7 +489,7 @@ async fn elucubrate<
     )?;
     let plays = &mut move_generator.plays;
     let play = &plays[0].play; // assume at least there's always Pass
-    println!("Playing: {}", play.fmt(board_snapshot));
+    println!("Playing: {}", play.fmt(board_snapshot)?);
 
     let mut game_event = macondo::GameEvent {
         rack: format!(
@@ -506,17 +524,17 @@ async fn elucubrate<
                 game_event.row = *idx as i32;
                 game_event.column = *lane as i32;
                 game_event.set_direction(macondo::game_event::Direction::Vertical);
-                game_event.position = format!("{}{}", display::column(*lane), idx + 1);
+                game_event.position = format!("{}{}", display::column(*lane)?, idx + 1);
                 dim.down(*lane)
             } else {
                 game_event.row = *lane as i32;
                 game_event.column = *idx as i32;
                 game_event.set_direction(macondo::game_event::Direction::Horizontal);
-                game_event.position = format!("{}{}", lane + 1, display::column(*idx));
+                game_event.position = format!("{}{}", lane + 1, display::column(*idx)?);
                 dim.across(*lane)
             };
             game_event.played_tiles =
-                main_word(alphabet, &game_state.board_tiles, &strider, *idx, word);
+                main_word(alphabet, &game_state.board_tiles, &strider, *idx, word)?;
             // Play scores are premultiplied by equity::SCALE (millipoints); the
             // GameEvent score is in whole points.
             game_event.score = score.descaled().raw();
@@ -579,6 +597,7 @@ async fn evaluate<
     let kwg: &kwg::Kwg<N> = kwg;
     let klv: &klv::Klv<kwg::Node24> = klv;
     let game_config: &game_config::GameConfig = game_config;
+    let graphs = graphs_of(game_config, kwg, is_jumbled)?;
     let rack_reader: &alphabet::AlphabetReader = rack_reader;
     let play_reader: &alphabet::AlphabetReader = play_reader;
 
@@ -632,7 +651,7 @@ async fn evaluate<
             let board_snapshot = &movegen::BoardSnapshot {
                 board_tiles: &game_state.board_tiles,
                 game_config,
-                kwg,
+                graphs,
                 anagrams: None,
                 rack_lengths: None,
                 klv,
@@ -680,7 +699,7 @@ async fn evaluate<
                 } else {
                     movegen::EquityPredicate::AcceptAll
                 },
-            );
+            )?;
 
             play_eval.push(eval_played_move(EvalPlayedMoveArguments {
                 event,
@@ -819,7 +838,7 @@ fn eval_played_move(
             } else {
                 dim.across(*lane)
             };
-            main_word(alphabet, board_tiles, &strider, *idx, word)
+            main_word(alphabet, board_tiles, &strider, *idx, word)?
         }
         movegen::Play::Exchange { .. } => String::new(),
     };
@@ -1019,7 +1038,7 @@ impl LexiconFiles {
             return Ok(());
         };
         let mut v1 = Vec::<bites::Bites>::new();
-        each_word(list_kwg, |w| v1.push(w.into()));
+        each_word(list_kwg, |w| v1.push(w.into()))?;
         let mut v2 = Vec::<bites::Bites>::new();
         let mut v3 = Vec::<bites::Bites>::new();
         let mut v1p = 0;
@@ -1042,7 +1061,7 @@ impl LexiconFiles {
             if in_list || w.len() <= 2 {
                 v3.push(w.into());
             }
-        });
+        })?;
         for (kwgs_out, words) in [
             (&mut self.common_word_kwgs, &v2),
             (&mut self.common_word_plus_twos_kwgs, &v3),
@@ -1667,7 +1686,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                 if place_tiles_buf.len() < 2 || !place_tiles_buf.iter().any(|&t| t != 0) {
                     wolges::return_error!("not enough tiles played".into());
                 }
-                if idx > 0 && board_tiles[strider.at(idx - 1)] != 0 {
+                if idx > 0 && board_tiles[strider.at(idx - 1)?] != 0 {
                     wolges::return_error!("has prefix".into());
                 }
                 let end_idx = idx as usize + place_tiles_buf.len();
@@ -1676,14 +1695,14 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                         wolges::return_error!("out of bounds".into());
                     }
                     std::cmp::Ordering::Less => {
-                        if board_tiles[strider.at(end_idx as i8)] != 0 {
+                        if board_tiles[strider.at(end_idx as i8)?] != 0 {
                             wolges::return_error!("has suffix".into());
                         }
                     }
                     std::cmp::Ordering::Equal => {}
                 }
                 for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                    let j = strider.at(i);
+                    let j = strider.at(i)?;
                     if tile == 0 {
                         if board_tiles[j] == 0 {
                             wolges::return_error!("playing through vacant board".into());
@@ -1704,7 +1723,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                         main_tally.resize(alphabet.len() as usize, 0);
                     }
                     for (i, &tile) in (idx..).zip(place_tiles_buf.iter()) {
-                        let b = board_tiles[strider.at(i)];
+                        let b = board_tiles[strider.at(i)?];
                         if is_jumbled {
                             main_tally[(b & 0x7f) as usize] += 1;
                         } else {
@@ -1716,13 +1735,13 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                                 macondo::game_event::Direction::Horizontal => dim.down(i),
                             };
                             let mut j = lane;
-                            while j > 0 && board_tiles[perpendicular_strider.at(j - 1)] != 0 {
+                            while j > 0 && board_tiles[perpendicular_strider.at(j - 1)?] != 0 {
                                 j -= 1;
                             }
                             let perpendicular_strider_len = perpendicular_strider.len();
                             if j < lane
                                 || (j + 1 < perpendicular_strider_len
-                                    && board_tiles[perpendicular_strider.at(j + 1)] != 0)
+                                    && board_tiles[perpendicular_strider.at(j + 1)?] != 0)
                             {
                                 let mut p_perpendicular = 0;
                                 let perpendicular_tally =
@@ -1733,7 +1752,7 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                                 }
                                 for j in j..perpendicular_strider_len {
                                     let perpendicular_tile =
-                                        board_tiles[perpendicular_strider.at(j)];
+                                        board_tiles[perpendicular_strider.at(j)?];
                                     if perpendicular_tile == 0 {
                                         break;
                                     }
@@ -1746,9 +1765,9 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                                     }
                                 }
                                 if if is_jumbled {
-                                    !kwg.accepts_alpha(perpendicular_tally)
+                                    !kwg.accepts_alpha(perpendicular_tally)?
                                 } else {
-                                    p_perpendicular < 0 || !kwg[p_perpendicular].accepts()
+                                    p_perpendicular < 0 || !kwg.node(p_perpendicular)?.accepts()
                                 } {
                                     return Ok(false);
                                 }
@@ -1756,9 +1775,9 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
                         }
                     }
                     if if is_jumbled {
-                        !kwg.accepts_alpha(main_tally)
+                        !kwg.accepts_alpha(main_tally)?
                     } else {
-                        p_main < 0 || !kwg[p_main].accepts()
+                        p_main < 0 || !kwg.node(p_main)?.accepts()
                     } {
                         return Ok(false);
                     }
@@ -1767,8 +1786,8 @@ fn do_it<'a, F: Fn(String) -> String + Send + 'static, N: kwg::Node + Send + Syn
             };
 
             let is_jumbled = match game_config.game_rules() {
-                game_config::GameRules::Classic => false,
-                game_config::GameRules::Jumbled => true,
+                game_config::GameRules::Classic | game_config::GameRules::Woadwage => false,
+                game_config::GameRules::Jumbled | game_config::GameRules::JumbledWoadwage => true,
             };
             let mut bot_resp = if bot_req.evaluation_request.is_some() {
                 // Evaluation requests never sleep and always reply.
@@ -1926,7 +1945,7 @@ mod tests {
         // a U at H5, which the best move, down from H4 with a blank for its
         // first letter, plays through
         let mut board_tiles = vec![0u8; dim.rows as usize * dim.cols as usize];
-        board_tiles[dim.down(7).at(4)] = 21;
+        board_tiles[dim.down(7).at(4).unwrap()] = 21;
         let place = movegen::ValuedMove {
             equity: equity::Equity::new(30 * equity::SCALE),
             play: movegen::Play::Place {
