@@ -374,7 +374,8 @@ async fn elucubrate<
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
     println!("it is {my_nickname}'s turn");
     let (word_list, effective_bot_type) = word_list_and_bot_type(bot_req.bot_type());
-    let vocab = movegen::Vocab::new(game_config, kwg)?;
+    let vocab = movegen::Vocab::new(game_config, kwg, movegen::Tables::None)?
+        .with_tables(Some(std::sync::Arc::clone(arm_tables)));
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
         OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
             move_filter::GenMoves::Tilt {
@@ -394,7 +395,6 @@ async fn elucubrate<
             move_picker::MovePicker::Simmer(Box::new(move_picker::Simmer::new(
                 game_config,
                 &vocab,
-                arm_tables,
                 klv,
                 move_picker::SimmerParams {
                     num_sim_iters: move_picker::DEFAULT_NUM_SIM_ITERS,
@@ -451,17 +451,17 @@ async fn elucubrate<
         );
     }
 
-    let board_snapshot = &movegen::BoardSnapshot {
-        board_tiles: &game_state.board_tiles,
+    let vocab_view =
+        movegen::Vocab::bare(used_kwg).with_tables(Some(std::sync::Arc::clone(arm_tables)));
+    let board_snapshot = &movegen::BoardSnapshot::new(
+        &game_state.board_tiles,
         game_config,
-        vocab: &movegen::Vocab::lean(used_kwg),
-        anagrams: arm_tables.anagrams(),
-        rack_lengths: arm_tables.rack_lengths(),
-        klv: match bot_req.bot_type() {
+        &vocab_view,
+        match bot_req.bot_type() {
             macondo::bot_request::BotCode::NoLeaveBot => noleave_klv,
             _ => klv,
         },
-    };
+    );
 
     move_picker.pick_a_move(
         &mut move_filter,
@@ -581,7 +581,7 @@ async fn evaluate<
         play_reader,
     }: EvaluateArguments<'_, PlaceTilesType, N>,
 ) -> error::Returns<macondo::Evaluation> {
-    let graphs = &movegen::Vocab::lean(kwg);
+    let graphs = &movegen::Vocab::bare(kwg);
     let klv: &klv::Klv<kwg::Node24> = klv;
     let game_config: &game_config::GameConfig = game_config;
     let rack_reader: &alphabet::AlphabetReader = rack_reader;
@@ -634,14 +634,8 @@ async fn evaluate<
             if rack.len() > rack_size {
                 wolges::return_error!(format!("rack {:?} is too long", event.rack));
             }
-            let board_snapshot = &movegen::BoardSnapshot {
-                board_tiles: &game_state.board_tiles,
-                game_config,
-                vocab: graphs,
-                anagrams: None,
-                rack_lengths: None,
-                klv,
-            };
+            let board_snapshot =
+                &movegen::BoardSnapshot::new(&game_state.board_tiles, game_config, graphs, klv);
             seen_moves.clear();
             // Jumbled words are anagrams; dedup by sorted tiles so the
             // ranked list has one entry per distinct play (matches awsm).

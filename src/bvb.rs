@@ -211,12 +211,15 @@ fn do_it<N: kwg::Node + Sync + 'static>(
             "CSW21.kwg has tiles past this game's {alphabet_len}"
         ));
     }
-    let arm_tables = anagrams::ArmTables::build(&kwg, &game_config, lean)?;
-    let vocab = if lean {
-        movegen::Vocab::lean(&kwg)
-    } else {
-        movegen::Vocab::new(&game_config, &kwg)?
-    };
+    let vocab = movegen::Vocab::new(
+        &game_config,
+        &kwg,
+        if lean {
+            movegen::Tables::RackLengths
+        } else {
+            movegen::Tables::Anagrams
+        },
+    )?;
     let alphabet_len_without_blank = alphabet.len() - 1;
     let mut available_tally_buf = Vec::new();
     let mut game_state = game_state::GameState::new(&game_config);
@@ -510,14 +513,12 @@ fn do_it<N: kwg::Node + Sync + 'static>(
                 move_to_send_buf.push('c');
                 info!("Challenging last move");
             } else {
-                let board_snapshot = &movegen::BoardSnapshot {
-                    board_tiles: &game_state.board_tiles,
-                    game_config: &game_config,
-                    vocab: &vocab,
-                    anagrams: arm_tables.anagrams(),
-                    rack_lengths: arm_tables.rack_lengths(),
-                    klv: &klv,
-                };
+                let board_snapshot = &movegen::BoardSnapshot::new(
+                    &game_state.board_tiles,
+                    &game_config,
+                    &vocab,
+                    &klv,
+                );
                 move_picker.pick_a_move(
                     &mut move_filter,
                     &mut move_generator,
