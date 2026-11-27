@@ -90,20 +90,6 @@ fn refuse_a_wider_graph(
     Ok(kwg)
 }
 
-// the graphs a game's word graph gives move generation: its kad under jumbled
-// rules, else its kwg
-fn graphs_of<'a, N: kwg::Node>(
-    game_config: &game_config::GameConfig,
-    words: &'a kwg::Kwg<N>,
-    is_jumbled: bool,
-) -> error::Returns<movegen::KwgForMovegen<'a, N>> {
-    if is_jumbled {
-        movegen::KwgForMovegen::new(game_config, None, Some(words))
-    } else {
-        movegen::KwgForMovegen::new(game_config, Some(words), None)
-    }
-}
-
 fn each_word_raw<F: FnMut(&[u8]), N: kwg::Node>(g: &kwg::Kwg<N>, f: F) -> error::Returns<()> {
     struct Env<'a, F: FnMut(&[u8]), N: kwg::Node> {
         g: &'a kwg::Kwg<N>,
@@ -388,6 +374,7 @@ async fn elucubrate<
     let my_nickname = &game_history.players[game_state.turn as usize].nickname;
     println!("it is {my_nickname}'s turn");
     let (word_list, effective_bot_type) = word_list_and_bot_type(bot_req.bot_type());
+    let vocab = movegen::Vocab::new(game_config, kwg)?;
     let (mut move_filter, mut move_picker, would_sleep) = match effective_bot_type {
         OmgBotType::Tilt(bot_level) if tilter.is_some() && !is_jumbled => (
             move_filter::GenMoves::Tilt {
@@ -406,7 +393,7 @@ async fn elucubrate<
             move_filter::GenMoves::Unfiltered,
             move_picker::MovePicker::Simmer(Box::new(move_picker::Simmer::new(
                 game_config,
-                kwg,
+                &vocab,
                 arm_tables,
                 klv,
                 move_picker::SimmerParams {
@@ -467,7 +454,7 @@ async fn elucubrate<
     let board_snapshot = &movegen::BoardSnapshot {
         board_tiles: &game_state.board_tiles,
         game_config,
-        graphs: graphs_of(game_config, used_kwg, is_jumbled)?,
+        vocab: &movegen::Vocab::lean(used_kwg),
         anagrams: arm_tables.anagrams(),
         rack_lengths: arm_tables.rack_lengths(),
         klv: match bot_req.bot_type() {
@@ -594,10 +581,9 @@ async fn evaluate<
         play_reader,
     }: EvaluateArguments<'_, PlaceTilesType, N>,
 ) -> error::Returns<macondo::Evaluation> {
-    let kwg: &kwg::Kwg<N> = kwg;
+    let graphs = &movegen::Vocab::lean(kwg);
     let klv: &klv::Klv<kwg::Node24> = klv;
     let game_config: &game_config::GameConfig = game_config;
-    let graphs = graphs_of(game_config, kwg, is_jumbled)?;
     let rack_reader: &alphabet::AlphabetReader = rack_reader;
     let play_reader: &alphabet::AlphabetReader = play_reader;
 
@@ -651,7 +637,7 @@ async fn evaluate<
             let board_snapshot = &movegen::BoardSnapshot {
                 board_tiles: &game_state.board_tiles,
                 game_config,
-                graphs,
+                vocab: graphs,
                 anagrams: None,
                 rack_lengths: None,
                 klv,

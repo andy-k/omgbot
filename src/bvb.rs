@@ -204,7 +204,7 @@ fn do_it<N: kwg::Node + Sync + 'static>(
     // a kwg file, repacked into the layout the games are played in
     let mut kwg_bytes = std::fs::read("CSW21.kwg")?;
     kwg::repack_in_place::<kwg::Node22, N>(&mut kwg_bytes)?;
-    let kwg = kwg::Kwg::<N>::from_bytes_alloc(&kwg_bytes)?;
+    let kwg = std::sync::Arc::new(kwg::Kwg::<N>::from_bytes_alloc(&kwg_bytes)?);
     let alphabet_len = alphabet.len();
     if !kwg.fits_alphabet(alphabet_len) {
         wolges::return_error!(format!(
@@ -212,6 +212,11 @@ fn do_it<N: kwg::Node + Sync + 'static>(
         ));
     }
     let arm_tables = anagrams::ArmTables::build(&kwg, &game_config, lean)?;
+    let vocab = if lean {
+        movegen::Vocab::lean(&kwg)
+    } else {
+        movegen::Vocab::new(&game_config, &kwg)?
+    };
     let alphabet_len_without_blank = alphabet.len() - 1;
     let mut available_tally_buf = Vec::new();
     let mut game_state = game_state::GameState::new(&game_config);
@@ -508,7 +513,7 @@ fn do_it<N: kwg::Node + Sync + 'static>(
                 let board_snapshot = &movegen::BoardSnapshot {
                     board_tiles: &game_state.board_tiles,
                     game_config: &game_config,
-                    graphs: movegen::KwgForMovegen::new(&game_config, Some(&kwg), None)?,
+                    vocab: &vocab,
                     anagrams: arm_tables.anagrams(),
                     rack_lengths: arm_tables.rack_lengths(),
                     klv: &klv,
